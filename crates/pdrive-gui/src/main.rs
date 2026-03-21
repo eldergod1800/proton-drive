@@ -1,6 +1,9 @@
 slint::include_modules!();
 
 mod dbus_client;
+mod tray;
+
+use tray::PdriveTray;
 
 use pdrive_core::{auth::TokenStore, drive::DriveClient};
 
@@ -72,6 +75,36 @@ fn main() {
 
 fn run_main_window() {
     let window = MainWindow::new().expect("main window");
+
+    // Spawn tray icon in a background thread
+    let window_weak_tray = window.as_weak();
+    std::thread::spawn(move || {
+        let service = ksni::TrayService::new(PdriveTray {
+            on_open: Box::new(move || {
+                let ww = window_weak_tray.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(w) = ww.upgrade() {
+                        w.show().unwrap();
+                    }
+                });
+            }),
+            on_pause: Box::new(|| tracing::info!("pause sync requested from tray")),
+            on_resume: Box::new(|| tracing::info!("resume sync requested from tray")),
+            on_quit: Box::new(|| {
+                let _ = slint::invoke_from_event_loop(|| slint::quit_event_loop().unwrap());
+            }),
+        });
+        service.run().ok();
+    });
+
+    // Intercept window close: minimize to tray instead of quitting
+    let window_weak_close = window.as_weak();
+    window.window().on_close_requested(move || {
+        if let Some(w) = window_weak_close.upgrade() {
+            w.hide().unwrap();
+        }
+        slint::CloseRequestResponse::KeepWindowShown
+    });
 
     let (browse_tx, mut browse_rx) = tokio::sync::mpsc::channel::<String>(16);
 
