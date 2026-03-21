@@ -8,12 +8,11 @@ name = "pdrive"
 path = "src/main.rs"
 
 [build-dependencies]
-cxx-qt-build = "0.8"
+slint-build = "1"
 
 [dependencies]
 pdrive-core = { path = "../pdrive-core" }
-cxx-qt = "0.8"
-cxx-qt-lib = { version = "0.8", features = ["qt_gui", "qt_qml"] }
+slint = "1"
 tokio = { workspace = true }
 zbus = { workspace = true }
 anyhow = { workspace = true }
