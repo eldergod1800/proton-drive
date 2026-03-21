@@ -9,8 +9,8 @@ path = "src/main.rs"
 
 [dependencies]
 pdrive-core = { path = "../pdrive-core" }
-tokio = { version = "1", features = ["full"] }
-zbus = { version = "4", features = ["tokio"] }
-anyhow = "1"
-tracing = "0.1"
-tracing-subscriber = "0.3"
+tokio = { workspace = true }
+zbus = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
