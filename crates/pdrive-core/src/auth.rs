@@ -8,11 +8,10 @@ fn machine_passphrase() -> SecretString {
     let username = std::env::var("USER")
         .or_else(|_| std::env::var("LOGNAME"))
         .unwrap_or_else(|_| "user".to_string());
-    SecretString::from(format!(
-        "pdrive-{}-{}",
-        machine_id.trim(),
-        username.trim()
-    ))
+    let input = format!("pdrive-{}-{}", machine_id.trim(), username.trim());
+    // Derive a non-reversible passphrase via BLAKE3
+    let hash = blake3::hash(input.as_bytes());
+    SecretString::from(hash.to_hex().to_string())
 }
 
 pub struct TokenStore {
