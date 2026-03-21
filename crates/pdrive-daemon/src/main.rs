@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .await?;
 
-    tracing::info!("D-Bus interface registered at {}", dbus::OBJECT_PATH);
+    tracing::info!("D-Bus interface registered at {} on {}", dbus::OBJECT_PATH, dbus::INTERFACE_NAME);
     tracing::info!("pdrive-daemon ready");
 
     // Keep running

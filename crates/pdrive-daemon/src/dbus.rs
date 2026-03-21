@@ -6,6 +6,7 @@ use zbus::interface;
 pub const INTERFACE_NAME: &str = "org.protonmail.PDrive";
 pub const OBJECT_PATH: &str = "/org/protonmail/PDrive";
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum DaemonStatus {
     Idle,
@@ -27,6 +28,7 @@ impl DaemonStatus {
 
 pub struct PDriveInterface {
     status: Arc<Mutex<DaemonStatus>>,
+    #[allow(dead_code)]
     config: Arc<Mutex<Config>>,
 }
 
