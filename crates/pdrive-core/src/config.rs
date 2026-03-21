@@ -9,14 +9,14 @@ pub enum SyncDirection {
     DownloadOnly,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyncPair {
     pub local: String,
     pub remote: String,
     pub direction: SyncDirection,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct Config {
     #[serde(default)]
     pub sync_pairs: Vec<SyncPair>,
@@ -24,7 +24,8 @@ pub struct Config {
 
 pub fn config_path() -> PathBuf {
     dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("~/.config"))
+        .or_else(|| dirs::home_dir().map(|h| h.join(".config")))
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
         .join("pdrive")
         .join("config.toml")
 }

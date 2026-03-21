@@ -15,6 +15,7 @@ fn test_config_round_trip() {
     let parsed: Config = toml::from_str(&toml_str).unwrap();
     assert_eq!(parsed.sync_pairs[0].local, "/home/user/Documents");
     assert_eq!(parsed.sync_pairs[0].remote, "/My Files/Documents");
+    assert_eq!(parsed.sync_pairs[0].direction, SyncDirection::Bidirectional);
 }
 
 #[test]
