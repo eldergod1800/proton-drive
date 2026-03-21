@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/pdrive-core",
+    "crates/pdrive-daemon",
+    "crates/pdrive-gui",
+]
+resolver = "2"
