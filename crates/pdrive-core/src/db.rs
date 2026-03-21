@@ -19,12 +19,13 @@ impl SyncStatus {
         }
     }
 
-    fn from_str(s: &str) -> Self {
+    fn from_str(s: &str) -> anyhow::Result<Self> {
         match s {
-            "pending_upload" => Self::PendingUpload,
-            "pending_download" => Self::PendingDownload,
-            "conflict" => Self::Conflict,
-            _ => Self::Synced,
+            "synced" => Ok(Self::Synced),
+            "pending_upload" => Ok(Self::PendingUpload),
+            "pending_download" => Ok(Self::PendingDownload),
+            "conflict" => Ok(Self::Conflict),
+            other => Err(anyhow::anyhow!("unknown sync status: {:?}", other)),
         }
     }
 }
@@ -37,6 +38,10 @@ pub struct SyncEntry {
     pub modified_at: i64,
 }
 
+/// Sync state database.
+///
+/// **Not `Send`**: `rusqlite::Connection` is not `Send`. Each thread or async task
+/// that needs database access must open its own `SyncDb` instance.
 pub struct SyncDb {
     conn: Connection,
 }
@@ -83,7 +88,7 @@ impl SyncDb {
             Ok(Some(SyncEntry {
                 local_path: row.get(0)?,
                 remote_id: row.get(1)?,
-                status: SyncStatus::from_str(&row.get::<_, String>(2)?),
+                status: SyncStatus::from_str(&row.get::<_, String>(2)?)?,
                 modified_at: row.get(3)?,
             }))
         } else {
@@ -97,13 +102,23 @@ impl SyncDb {
              FROM sync_entries WHERE status = 'pending_upload'"
         )?;
         let rows = stmt.query_map([], |row| {
-            Ok(SyncEntry {
-                local_path: row.get(0)?,
-                remote_id: row.get(1)?,
-                status: SyncStatus::PendingUpload,
-                modified_at: row.get(3)?,
-            })
+            let status_str: String = row.get(2)?;
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                status_str,
+                row.get::<_, i64>(3)?,
+            ))
         })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+
+        rows.map(|r| {
+            let (local_path, remote_id, status_str, modified_at) = r?;
+            Ok(SyncEntry {
+                local_path,
+                remote_id,
+                status: SyncStatus::from_str(&status_str)?,
+                modified_at,
+            })
+        }).collect::<anyhow::Result<Vec<_>>>()
     }
 }
