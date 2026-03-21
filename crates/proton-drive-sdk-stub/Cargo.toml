@@ -1,0 +1,4 @@
+[package]
+name = "proton-drive-sdk"
+version = "0.0.1"
+edition = "2021"
