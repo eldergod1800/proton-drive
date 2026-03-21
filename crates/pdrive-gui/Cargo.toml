@@ -7,6 +7,9 @@ edition = "2021"
 name = "pdrive"
 path = "src/main.rs"
 
+[build-dependencies]
+cxx-qt-build = "0.8"
+
 [dependencies]
 pdrive-core = { path = "../pdrive-core" }
 cxx-qt = "0.8"
