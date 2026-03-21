@@ -41,6 +41,9 @@ fn main() {
                 }
                 Err(e) => {
                     tracing::warn!("daemon not available: {}", e);
+                    // Drop browse_rx so try_send on the GUI side returns Err
+                    // and browse requests aren't silently queued while offline
+                    drop(browse_rx);
                     let ww = window_weak_bg.clone();
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(w) = ww.upgrade() {
