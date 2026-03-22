@@ -100,12 +100,16 @@ fn show_login_or_main(rt: Arc<tokio::runtime::Runtime>) {
                     let store = TokenStore::new(TokenStore::default_path());
                     match client.session_data().await {
                         Ok(session_data) => {
-                            let _ = store.save_session(&session_data).await;
+                            if let Err(e) = store.save_session(&session_data).await {
+                                tracing::error!("failed to save session to keyring — next launch will require re-login: {}", e);
+                            }
                         }
-                        Err(e) => tracing::warn!("failed to get session data: {}", e),
+                        Err(e) => tracing::error!("failed to get session data — session will not persist: {}", e),
                     }
                     // Store password for daemon restart (stays in encrypted keyring)
-                    let _ = store.save_password(password.as_str()).await;
+                    if let Err(e) = store.save_password(password.as_str()).await {
+                        tracing::error!("failed to save password to keyring — file names may be unreadable on next launch: {}", e);
+                    }
                     done.store(true, Ordering::Relaxed);
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(d) = dw.upgrade() {
