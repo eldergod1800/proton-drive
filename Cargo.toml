@@ -16,4 +16,9 @@ tracing-subscriber = "0.3"
 zbus = { version = "4", features = ["tokio"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+zeroize = { version = "1", features = ["derive"] }
 slint = { version = "1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg"] }
+proton-sdk-rs2 = { git = "https://github.com/tirbofish/proton-sdk-rs2" }
+proton-drive-sdk = { git = "https://github.com/tirbofish/proton-sdk-rs2" }
+semver = "1"
+futures = "0.3"
