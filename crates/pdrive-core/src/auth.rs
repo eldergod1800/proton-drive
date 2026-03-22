@@ -34,8 +34,11 @@ impl TokenStore {
     /// Save the full session data. Separate from the password.
     pub async fn save_session(&self, session: &StoredSession) -> anyhow::Result<()> {
         let json = serde_json::to_string(session)?;
-        keyring::Entry::new(KEYRING_SERVICE, KEYRING_SESSION)?.set_password(&json)?;
-        Ok(())
+        tokio::task::spawn_blocking(move || {
+            keyring::Entry::new(KEYRING_SERVICE, KEYRING_SESSION)?.set_password(&json)?;
+            Ok(())
+        })
+        .await?
     }
 
     /// Save the login password so the daemon can re-derive key passphrases on restart.
@@ -51,12 +54,15 @@ impl TokenStore {
 
     /// Load the stored session, if any.
     pub async fn load_session(&self) -> anyhow::Result<Option<StoredSession>> {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_SESSION)?;
-        match entry.get_password() {
-            Ok(json) => Ok(Some(serde_json::from_str(&json)?)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(anyhow::anyhow!("keyring read error: {}", e)),
-        }
+        tokio::task::spawn_blocking(|| {
+            let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_SESSION)?;
+            match entry.get_password() {
+                Ok(json) => Ok(Some(serde_json::from_str(&json)?)),
+                Err(keyring::Error::NoEntry) => Ok(None),
+                Err(e) => Err(anyhow::anyhow!("keyring read error: {}", e)),
+            }
+        })
+        .await?
     }
 
     /// Load the stored password, if any.
