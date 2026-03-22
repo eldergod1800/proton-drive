@@ -9,20 +9,23 @@ export struct FileEntry {
 export struct SidebarEntry {
     label: string,
     path: string,
+    icon: string,
 }
 
 export component MainWindow inherits Window {
     title: "Proton Drive";
-    preferred-width: 1000px;
-    preferred-height: 650px;
+    preferred-width: 1024px;
+    preferred-height: 680px;
+    background: #ffffff;
 
     in-out property <string> status-text: "Ready";
     in-out property <string> daemon-status: "connecting...";
+    in-out property <int>    active-sidebar: 0;
     in-out property <[FileEntry]> file-entries: [];
     in-out property <[SidebarEntry]> sidebar-entries: [
-        { label: "My Files", path: "/" },
-        { label: "Computers", path: "/computers" },
-        { label: "Sync Folders", path: "/sync" },
+        { label: "My Files",     path: "/",          icon: "🗂" },
+        { label: "Computers",    path: "/computers",  icon: "🖥" },
+        { label: "Sync Folders", path: "/sync",       icon: "🔄" },
     ];
 
     callback browse-requested(string);
@@ -32,97 +35,256 @@ export component MainWindow inherits Window {
         padding: 0;
         spacing: 0;
 
-        // Left sidebar
+        // ── Sidebar ───────────────────────────────────────────────────
         Rectangle {
             width: 200px;
-            background: #f5f5f5;
-            border-width: 0;
+            background: #f7f7f7;
 
             VerticalBox {
-                padding: 8px;
+                padding: 12px;
                 spacing: 2px;
 
+                // App header
+                Rectangle {
+                    height: 48px;
+                    HorizontalBox {
+                        padding: 4px;
+                        spacing: 8px;
+                        alignment: start;
+                        Text {
+                            text: "⬡";
+                            font-size: 22px;
+                            color: #6d4aff;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: "Proton Drive";
+                            font-size: 14px;
+                            font-weight: 700;
+                            color: #1a1a2e;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // Divider
+                Rectangle { height: 1px; background: #e0e0e0; }
+
+                Rectangle { height: 8px; }
+
                 for entry[i] in root.sidebar-entries: Rectangle {
-                    height: 36px;
-                    border-radius: 4px;
-                    background: touch.has-hover ? #e0e0e0 : transparent;
+                    height: 40px;
+                    border-radius: 8px;
+                    background: root.active-sidebar == i
+                        ? #ede9ff
+                        : (touch.has-hover ? #eeeeee : transparent);
 
                     touch := TouchArea {
-                        clicked => { root.browse-requested(entry.path); }
+                        clicked => {
+                            root.active-sidebar = i;
+                            root.browse-requested(entry.path);
+                        }
                     }
 
-                    Text {
-                        x: 12px;
-                        y: (parent.height - self.height) / 2;
-                        text: entry.label;
-                        font-size: 13px;
+                    HorizontalBox {
+                        padding-left: 12px;
+                        padding-right: 8px;
+                        spacing: 10px;
+                        alignment: start;
+
+                        Text {
+                            text: entry.icon;
+                            font-size: 15px;
+                            color: root.active-sidebar == i ? #6d4aff : #444444;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: entry.label;
+                            font-size: 13px;
+                            color: root.active-sidebar == i ? #6d4aff : #222222;
+                            font-weight: root.active-sidebar == i ? 600 : 400;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // Spacer
+                Rectangle { vertical-stretch: 1; }
+
+                // Storage hint
+                Rectangle {
+                    height: 52px;
+                    border-radius: 8px;
+                    background: #f0ecff;
+
+                    VerticalBox {
+                        padding: 8px;
+                        spacing: 2px;
+                        Text {
+                            text: "Storage";
+                            font-size: 11px;
+                            color: #6d4aff;
+                            font-weight: 600;
+                        }
+                        Text {
+                            text: "Connect daemon to see usage";
+                            font-size: 10px;
+                            color: #888888;
+                            wrap: word-wrap;
+                        }
                     }
                 }
             }
         }
 
-        // Divider
-        Rectangle { width: 1px; background: #dddddd; }
+        // Sidebar divider
+        Rectangle { width: 1px; background: #e0e0e0; }
 
-        // Right panel
+        // ── Main panel ────────────────────────────────────────────────
         VerticalBox {
             padding: 0;
             spacing: 0;
 
             // Toolbar
             Rectangle {
-                height: 48px;
-                background: #fafafa;
-                border-width: 0;
+                height: 56px;
+                background: #ffffff;
 
                 HorizontalBox {
-                    padding: 8px;
-                    spacing: 8px;
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    padding-top: 8px;
+                    padding-bottom: 8px;
+                    spacing: 10px;
                     alignment: stretch;
 
                     LineEdit {
-                        placeholder-text: "Search...";
+                        placeholder-text: "Search files...";
                         horizontal-stretch: 1;
                     }
 
-                    Button {
-                        text: "Upload";
-                        clicked => { root.upload-clicked(); }
+                    Rectangle {
+                        width: 96px;
+                        height: 36px;
+                        border-radius: 8px;
+                        background: upload-touch.has-hover ? #5a38e8 : #6d4aff;
+
+                        upload-touch := TouchArea {
+                            clicked => { root.upload-clicked(); }
+                        }
+
+                        Text {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            text: "↑  Upload";
+                            color: #ffffff;
+                            font-size: 13px;
+                            font-weight: 600;
+                        }
                     }
                 }
             }
 
-            // Divider
+            // Toolbar divider
             Rectangle { height: 1px; background: #eeeeee; }
 
-            // File list
-            if root.file-entries.length == 0: Rectangle {
-                vertical-stretch: 1;
-                Text {
-                    x: (parent.width - self.width) / 2;
-                    y: (parent.height - self.height) / 2;
-                    text: "Select a folder to browse";
-                    color: #999999;
-                    font-size: 13px;
+            // Column headers
+            Rectangle {
+                height: 32px;
+                background: #fafafa;
+
+                HorizontalBox {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 0;
+                    alignment: stretch;
+
+                    Text {
+                        text: "Name";
+                        font-size: 11px;
+                        font-weight: 600;
+                        color: #888888;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: "Size";
+                        font-size: 11px;
+                        font-weight: 600;
+                        color: #888888;
+                        width: 80px;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
                 }
             }
 
+            Rectangle { height: 1px; background: #eeeeee; }
+
+            // Empty state
+            if root.file-entries.length == 0: Rectangle {
+                vertical-stretch: 1;
+                background: #ffffff;
+
+                VerticalBox {
+                    alignment: center;
+                    spacing: 8px;
+                    Text {
+                        text: "🗂";
+                        font-size: 48px;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        text: "Select a folder from the sidebar";
+                        font-size: 14px;
+                        color: #999999;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+
+            // File list
             if root.file-entries.length > 0: ScrollView {
                 vertical-stretch: 1;
+
                 VerticalBox {
                     padding: 0;
                     spacing: 0;
+
                     for entry in root.file-entries: Rectangle {
-                        height: 32px;
-                        background: touch2.has-hover ? #f0f0f0 : transparent;
-                        touch2 := TouchArea {}
+                        height: 40px;
+                        background: row-touch.has-hover ? #f5f0ff : #ffffff;
+
+                        row-touch := TouchArea {}
+
                         HorizontalBox {
-                            padding: 8px;
+                            padding-left: 16px;
+                            padding-right: 16px;
+                            spacing: 0;
+                            alignment: stretch;
+
                             Text {
-                                text: entry.is-dir ? "📁 " + entry.name : "📄 " + entry.name;
+                                text: (entry.is-dir ? "📁  " : "📄  ") + entry.name;
                                 font-size: 13px;
+                                color: #1a1a1a;
+                                horizontal-stretch: 1;
                                 vertical-alignment: center;
                             }
+                            Text {
+                                text: entry.size;
+                                font-size: 12px;
+                                color: #888888;
+                                width: 80px;
+                                horizontal-alignment: right;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // Row divider
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: #f0f0f0;
                         }
                     }
                 }
@@ -130,24 +292,35 @@ export component MainWindow inherits Window {
 
             // Status bar
             Rectangle {
-                height: 28px;
-                background: #f0f0f0;
+                height: 30px;
+                background: #f7f7f7;
 
                 HorizontalBox {
-                    padding: 6px;
+                    padding-left: 16px;
+                    padding-right: 16px;
                     spacing: 8px;
+                    alignment: stretch;
 
                     Text {
                         text: root.status-text;
                         font-size: 11px;
+                        color: #666666;
                         horizontal-stretch: 1;
                         vertical-alignment: center;
+                    }
+
+                    Rectangle {
+                        width: 8px;
+                        height: 8px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 4px;
+                        background: root.daemon-status == "running" ? #22c55e : #aaaaaa;
                     }
 
                     Text {
                         text: "daemon: " + root.daemon-status;
                         font-size: 11px;
-                        color: root.daemon-status == "running" ? #4caf50 : #999999;
+                        color: root.daemon-status == "running" ? #22c55e : #aaaaaa;
                         vertical-alignment: center;
                     }
                 }

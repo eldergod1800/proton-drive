@@ -1,55 +1,132 @@
-import { Button, LineEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { LineEdit, VerticalBox } from "std-widgets.slint";
 
 export component LoginDialog inherits Window {
-    title: "Sign in to Proton Drive";
-    preferred-width: 360px;
+    title: "Proton Drive";
+    preferred-width: 400px;
+    preferred-height: 440px;
+    background: #ffffff;
 
     in-out property <string> error-text: "";
     in-out property <bool>   busy: false;
 
     callback login-requested(string /* username */, string /* password */);
 
-    VerticalBox {
-        padding: 24px;
-        spacing: 12px;
+    Rectangle {
+        background: #ffffff;
 
-        Text {
-            text: "Proton Drive";
-            font-size: 22px;
-            font-weight: 700;
-            horizontal-alignment: center;
-        }
+        VerticalBox {
+            padding: 40px;
+            spacing: 0;
 
-        Text {
-            text: "Sign in with your Proton account";
-            font-size: 13px;
-            color: #666666;
-            horizontal-alignment: center;
-        }
+            // Logo area
+            Rectangle {
+                height: 80px;
+                VerticalBox {
+                    spacing: 4px;
+                    alignment: center;
+                    Text {
+                        text: "⬡";
+                        font-size: 36px;
+                        color: #6d4aff;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        text: "Proton Drive";
+                        font-size: 22px;
+                        font-weight: 700;
+                        color: #1a1a2e;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
 
-        username-field := LineEdit {
-            placeholder-text: "Username or email";
-            enabled: !root.busy;
-        }
+            Rectangle { height: 8px; }
 
-        password-field := LineEdit {
-            placeholder-text: "Password";
-            input-type: password;
-            enabled: !root.busy;
-        }
+            Text {
+                text: "Sign in to your account";
+                font-size: 13px;
+                color: #888888;
+                horizontal-alignment: center;
+            }
 
-        if root.error-text != "": Text {
-            text: root.error-text;
-            color: #d32f2f;
-            font-size: 12px;
-            wrap: word-wrap;
-        }
+            Rectangle { height: 28px; }
 
-        Button {
-            text: root.busy ? "Signing in..." : "Sign in";
-            enabled: !root.busy;
-            clicked => {
-                root.login-requested(username-field.text, password-field.text);
+            // Username
+            Text {
+                text: "Email or username";
+                font-size: 12px;
+                font-weight: 600;
+                color: #444444;
+            }
+            Rectangle { height: 6px; }
+            username-field := LineEdit {
+                placeholder-text: "you@proton.me";
+                enabled: !root.busy;
+                height: 40px;
+            }
+
+            Rectangle { height: 16px; }
+
+            // Password
+            Text {
+                text: "Password";
+                font-size: 12px;
+                font-weight: 600;
+                color: #444444;
+            }
+            Rectangle { height: 6px; }
+            password-field := LineEdit {
+                placeholder-text: "Password";
+                input-type: password;
+                enabled: !root.busy;
+                height: 40px;
+            }
+
+            Rectangle { height: 8px; }
+
+            // Error text
+            if root.error-text != "": Rectangle {
+                height: 36px;
+                border-radius: 6px;
+                background: #fff0f0;
+
+                Text {
+                    x: 10px;
+                    y: (parent.height - self.height) / 2;
+                    text: root.error-text;
+                    color: #d32f2f;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+            }
+
+            if root.error-text == "": Rectangle { height: 36px; }
+
+            Rectangle { height: 8px; }
+
+            // Sign in button
+            Rectangle {
+                height: 44px;
+                border-radius: 10px;
+                background: root.busy
+                    ? #a08fff
+                    : (btn-touch.has-hover ? #5a38e8 : #6d4aff);
+
+                btn-touch := TouchArea {
+                    enabled: !root.busy;
+                    clicked => {
+                        root.login-requested(username-field.text, password-field.text);
+                    }
+                }
+
+                Text {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    text: root.busy ? "Signing in..." : "Sign in";
+                    color: #ffffff;
+                    font-size: 14px;
+                    font-weight: 600;
+                }
             }
         }
     }
