@@ -28,11 +28,7 @@ impl PDriveInterface {
 impl PDriveInterface {
     async fn get_status(&self) -> String {
         let guard = self.drive.lock().await;
-        if guard.is_some() {
-            "running".to_string()
-        } else {
-            "no-session".to_string()
-        }
+        if guard.is_some() { "running".to_string() } else { "no-session".to_string() }
     }
 
     async fn pause_sync(&self) {
@@ -58,25 +54,19 @@ impl PDriveInterface {
             }
         };
 
-        let cache = self.path_cache.lock().await;
-        let node_uid = match cache.get(&remote_path).cloned() {
-            Some(uid) => uid,
-            None => {
-                tracing::warn!(
-                    "download_file: path not in cache, browse parent first: {}",
-                    remote_path
-                );
-                return String::new();
+        let node_uid = {
+            let cache = self.path_cache.lock().await;
+            match cache.get(&remote_path).cloned() {
+                Some(uid) => uid,
+                None => {
+                    tracing::warn!("download_file: path not in cache, browse parent first: {}", remote_path);
+                    return String::new();
+                }
             }
         };
-        drop(cache);
 
         let filename = remote_path.rsplit('/').next().unwrap_or("file").to_string();
-        let raw = match std::path::Path::new(&filename)
-            .components()
-            .collect::<Vec<_>>()
-            .as_slice()
-        {
+        let raw = match std::path::Path::new(&filename).components().collect::<Vec<_>>().as_slice() {
             [std::path::Component::Normal(_)] => filename.clone(),
             _ => {
                 tracing::warn!("download_file: invalid filename '{}'", filename);
@@ -93,8 +83,7 @@ impl PDriveInterface {
         let dest = cache_dir.join(&raw);
 
         // SEC-4: validate path stays inside cache dir
-        let safe = dest.is_absolute() && dest.starts_with(&cache_dir);
-        if !safe {
+        if !dest.is_absolute() || !dest.starts_with(&cache_dir) {
             tracing::warn!("download_file: blocked unsafe path");
             return String::new();
         }
@@ -118,41 +107,33 @@ impl PDriveInterface {
             }
         };
 
-        let entries_and_uids: Vec<(DriveEntry, NodeUid)> =
-            if remote_path == "/" || remote_path.is_empty() {
-                match drive.list_root().await {
-                    Ok((entries, _root_uid)) => entries,
-                    Err(e) => {
-                        tracing::warn!("browse_directory root failed: {}", e);
-                        return "[]".to_string();
-                    }
+        let entries_and_uids = if remote_path == "/" || remote_path.is_empty() {
+            match drive.list_root().await {
+                Ok((entries, _root_uid)) => entries,
+                Err(e) => {
+                    tracing::warn!("browse_directory root failed: {}", e);
+                    return "[]".to_string();
                 }
-            } else {
-                let uid = {
-                    let cache = self.path_cache.lock().await;
-                    cache.get(&remote_path).cloned()
-                };
-                match uid {
-                    Some(uid) => match drive.list_folder(uid).await {
-                        Ok(entries) => entries,
-                        Err(e) => {
-                            tracing::warn!(
-                                "browse_directory failed for {}: {}",
-                                remote_path,
-                                e
-                            );
-                            return "[]".to_string();
-                        }
-                    },
-                    None => {
-                        tracing::warn!(
-                            "browse_directory: path not in cache: {}",
-                            remote_path
-                        );
-                        return "[]".to_string();
-                    }
-                }
+            }
+        } else {
+            let uid = {
+                let cache = self.path_cache.lock().await;
+                cache.get(&remote_path).cloned()
             };
+            match uid {
+                Some(uid) => match drive.list_folder(uid).await {
+                    Ok(entries) => entries,
+                    Err(e) => {
+                        tracing::warn!("browse_directory failed for {}: {}", remote_path, e);
+                        return "[]".to_string();
+                    }
+                },
+                None => {
+                    tracing::warn!("browse_directory: path not in cache: {}", remote_path);
+                    return "[]".to_string();
+                }
+            }
+        };
 
         // Cache all child paths for subsequent navigation and downloads
         {
@@ -168,16 +149,13 @@ impl PDriveInterface {
         }
 
         // Serialize to JSON for D-Bus transport
-        let json_entries: Vec<serde_json::Value> = entries_and_uids
-            .iter()
-            .map(|(e, _)| {
-                serde_json::json!({
-                    "name": e.name,
-                    "is_dir": e.is_dir,
-                    "size": e.size.map(human_size).unwrap_or_else(|| "--".to_string()),
-                })
+        let json_entries: Vec<serde_json::Value> = entries_and_uids.iter().map(|(e, _)| {
+            serde_json::json!({
+                "name": e.name,
+                "is_dir": e.is_dir,
+                "size": e.size.map(human_size).unwrap_or_else(|| "--".to_string()),
             })
-            .collect();
+        }).collect();
 
         serde_json::to_string(&json_entries).unwrap_or_else(|_| "[]".to_string())
     }
