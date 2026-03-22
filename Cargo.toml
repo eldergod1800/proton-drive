@@ -21,3 +21,4 @@ proton-sdk-rs2 = { git = "https://github.com/tirbofish/proton-sdk-rs2" }
 proton-drive-sdk = { git = "https://github.com/tirbofish/proton-sdk-rs2" }
 semver = "1"
 futures = "0.3"
+reqwest = { version = "0.13", features = ["json"] }

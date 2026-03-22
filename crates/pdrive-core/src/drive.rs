@@ -10,6 +10,7 @@ use proton_drive_sdk::{
 use proton_sdk_rs2::{
     PasswordMode, SessionId, UserId,
     cache::InMemoryCacheRepository,
+    client::ProtonClientOptions,
     session::{ProtonAPISession, ProtonSessionOptions},
 };
 use semver::Version;
@@ -36,12 +37,103 @@ pub struct DriveClient {
 
 impl DriveClient {
     pub async fn login(username: &str, password: &str) -> anyhow::Result<Self> {
-        let options = ProtonSessionOptions::new(Default::default());
+        if username.is_empty() {
+            anyhow::bail!("username is empty — please enter your email or username");
+        }
+        tracing::info!("attempting login for username: {}", username);
+        let client_options = ProtonClientOptions {
+            // Use the official Linux Drive client app version to avoid human verification
+            app_version_override: Some("web-drive@5.0.16".to_string()),
+            ..Default::default()
+        };
+        let options = ProtonSessionOptions::new(client_options);
         let mut session =
-            ProtonAPISession::begin(username, password, app_version(), options).await?;
+            ProtonAPISession::begin(username, password, app_version(), options).await
+            .map_err(|e| anyhow::anyhow!("SRP auth failed: {:#}", e))?;
+        if session.is_waiting_for_second_factor_code {
+            anyhow::bail!("2FA is required for this account but is not yet supported");
+        }
         session.apply_data_password(password).await?;
         let drive = ProtonDriveClient::new(&session, None)?;
         Ok(Self { session, drive })
+    }
+
+    /// Login using an email verification code obtained after a 9001 (human verification) response.
+    /// The caller should first call `login()`, extract the HV token via `extract_hv_token()`,
+    /// request a code via `send_email_verification()`, then call this with the code the user enters.
+    pub async fn login_with_verification_code(
+        username: &str,
+        password: &str,
+        hv_code: &str,
+    ) -> anyhow::Result<Self> {
+        if username.is_empty() {
+            anyhow::bail!("username is empty — please enter your email or username");
+        }
+        if hv_code.is_empty() {
+            anyhow::bail!("verification code is empty");
+        }
+        tracing::info!(
+            "attempting login with email verification code for username: {}",
+            username
+        );
+        let client_options = ProtonClientOptions {
+            app_version_override: Some("web-drive@5.0.16".to_string()),
+            ..Default::default()
+        };
+        let options = ProtonSessionOptions::new(client_options);
+        let mut session = ProtonAPISession::begin_with_email_verification(
+            username,
+            password,
+            hv_code,
+            app_version(),
+            options,
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("SRP auth (with HV) failed: {:#}", e))?;
+        if session.is_waiting_for_second_factor_code {
+            anyhow::bail!("2FA is required for this account but is not yet supported");
+        }
+        session.apply_data_password(password).await?;
+        let drive = ProtonDriveClient::new(&session, None)?;
+        Ok(Self { session, drive })
+    }
+
+    /// Extract the HumanVerificationToken from an error returned by `login()`.
+    /// Returns `Some(token)` when the error is a 9001 human-verification error.
+    pub fn extract_hv_token(error: &anyhow::Error) -> Option<String> {
+        let msg = error.to_string();
+        if let Some(json_start) = msg.find('{') {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&msg[json_start..]) {
+                if v["Code"] == 9001 {
+                    return v["Details"]["HumanVerificationToken"]
+                        .as_str()
+                        .map(|s| s.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    /// Request Proton to email a verification code to the user's account address.
+    /// `hv_token` is the token from `extract_hv_token()`.
+    pub async fn send_email_verification(username: &str, hv_token: &str) -> anyhow::Result<()> {
+        let client = reqwest::Client::new();
+        let body = serde_json::json!({"Username": username, "Type": "login"});
+        let resp = client
+            .post("https://drive-api.proton.me/core/v4/users/code")
+            .header("content-type", "application/json")
+            .header("x-pm-appversion", "web-drive@5.0.16")
+            .header("x-pm-human-verification-token", hv_token)
+            .header("x-pm-human-verification-token-type", "email")
+            .json(&body)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("send_email_verification {}: {}", status, body);
+        }
+        Ok(())
     }
 
     pub async fn from_stored(stored: &StoredSession, password: &str) -> anyhow::Result<Self> {

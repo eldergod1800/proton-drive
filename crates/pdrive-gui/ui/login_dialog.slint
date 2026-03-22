@@ -8,8 +8,12 @@ export component LoginDialog inherits Window {
 
     in-out property <string> error-text: "";
     in-out property <bool>   busy: false;
+    in-out property <bool>   show-verification: false;
+    in-out property <string> verification-label: "Check your email for a verification code";
+    in-out property <string> verification-code-text: "";
 
-    callback login-requested(string /* username */, string /* password */);
+    callback send-verification-code-requested(string /* username */);
+    callback login-requested(string /* username */, string /* password */, string /* verification_code */);
 
     Rectangle {
         background: #ffffff;
@@ -84,6 +88,77 @@ export component LoginDialog inherits Window {
 
             Rectangle { height: 8px; }
 
+            // Verification code section (shown only when show-verification is true)
+            if root.show-verification: VerticalBox {
+                spacing: 0;
+                padding: 0;
+
+                Rectangle {
+                    height: 36px;
+                    border-radius: 6px;
+                    background: #f0f4ff;
+
+                    Text {
+                        x: 10px;
+                        y: (parent.height - self.height) / 2;
+                        text: root.verification-label;
+                        color: #444488;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                }
+
+                Rectangle { height: 8px; }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Verification Code";
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #444444;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle {
+                        height: 28px;
+                        border-radius: 6px;
+                        background: root.busy ? #d0d0d0 : (send-touch.has-hover ? #5a38e8 : #6d4aff);
+                        width: 90px;
+
+                        send-touch := TouchArea {
+                            enabled: !root.busy;
+                            clicked => {
+                                root.send-verification-code-requested(username-field.text);
+                            }
+                        }
+
+                        Text {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            text: "Send Code";
+                            color: #ffffff;
+                            font-size: 11px;
+                            font-weight: 600;
+                        }
+                    }
+                }
+
+                Rectangle { height: 6px; }
+
+                verification-field := LineEdit {
+                    placeholder-text: "Enter code from email";
+                    enabled: !root.busy;
+                    height: 40px;
+                    edited => {
+                        root.verification-code-text = self.text;
+                    }
+                }
+
+                Rectangle { height: 8px; }
+            }
+
             // Error text
             if root.error-text != "": Rectangle {
                 height: 36px;
@@ -115,7 +190,11 @@ export component LoginDialog inherits Window {
                 btn-touch := TouchArea {
                     enabled: !root.busy;
                     clicked => {
-                        root.login-requested(username-field.text, password-field.text);
+                        root.login-requested(
+                            username-field.text,
+                            password-field.text,
+                            root.show-verification ? root.verification-code-text : ""
+                        );
                     }
                 }
 

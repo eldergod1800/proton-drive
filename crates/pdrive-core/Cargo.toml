@@ -16,6 +16,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 notify = "6"
 anyhow = { workspace = true }
 tracing = { workspace = true }
+reqwest = { workspace = true }
 dirs = "5"
 keyring = "2"
 zeroize = { version = "1", features = ["derive"] }

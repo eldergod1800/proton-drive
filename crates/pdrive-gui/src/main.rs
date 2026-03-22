@@ -80,10 +80,47 @@ fn show_login_or_main(rt: Arc<tokio::runtime::Runtime>) {
     let login_done_clone = login_done.clone();
     let rt_login = rt.clone();
 
-    dialog.on_login_requested(move |username, password| {
+    // Shared HV token state: set when login() fails with 9001
+    let hv_token: Arc<std::sync::Mutex<Option<String>>> = Arc::new(std::sync::Mutex::new(None));
+
+    // "Send Code" button handler
+    let dw_send = dialog_weak.clone();
+    let rt_send = rt_login.clone();
+    let hv_token_send = hv_token.clone();
+    dialog.on_send_verification_code_requested(move |username| {
+        let username = username.to_string();
+        let token = hv_token_send.lock().unwrap().clone();
+        if let Some(tok) = token {
+            let dw2 = dw_send.clone();
+            rt_send.spawn(async move {
+                match DriveClient::send_email_verification(&username, &tok).await {
+                    Ok(()) => {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(d) = dw2.upgrade() {
+                                d.set_error_text("".into());
+                                d.set_verification_label("Code sent — check your email".into());
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        let msg = format!("Failed to send code: {}", e);
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(d) = dw2.upgrade() {
+                                d.set_error_text(msg.into());
+                            }
+                        });
+                    }
+                }
+            });
+        }
+    });
+
+    let hv_token_login = hv_token.clone();
+    dialog.on_login_requested(move |username, password, verification_code| {
         // Zeroize the password after use (SEC-5)
         let username = username.to_string();
         let password = Zeroizing::new(password.to_string());
+        let verification_code = verification_code.to_string();
 
         if let Some(d) = dialog_weak.upgrade() {
             d.set_busy(true);
@@ -92,10 +129,23 @@ fn show_login_or_main(rt: Arc<tokio::runtime::Runtime>) {
 
         let dw = dialog_weak.clone();
         let done = login_done_clone.clone();
+        let hv_token_inner = hv_token_login.clone();
 
         // BUG-3/BUG-7: spawn on background runtime, never block_on in this callback
         rt_login.spawn(async move {
-            match DriveClient::login(&username, &password).await {
+            // If user has entered a verification code, use the HV login path
+            let result = if verification_code.trim().is_empty() {
+                DriveClient::login(&username, &password).await
+            } else {
+                DriveClient::login_with_verification_code(
+                    &username,
+                    &password,
+                    verification_code.trim(),
+                )
+                .await
+            };
+
+            match result {
                 Ok(client) => {
                     let store = TokenStore::new(TokenStore::default_path());
                     match client.session_data().await {
@@ -118,11 +168,26 @@ fn show_login_or_main(rt: Arc<tokio::runtime::Runtime>) {
                     });
                 }
                 Err(e) => {
-                    let msg = format!("Login failed: {}", e);
+                    // Check if this is a 9001 human verification error
+                    let hv_tok = DriveClient::extract_hv_token(&e);
+                    let needs_hv = hv_tok.is_some();
+                    if let Some(tok) = hv_tok {
+                        *hv_token_inner.lock().unwrap() = Some(tok);
+                    }
+
+                    let msg = if needs_hv {
+                        "Human verification required. Click \"Send Code\" to receive an email code, then enter it below.".to_string()
+                    } else {
+                        format!("Login failed: {}", e)
+                    };
+
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(d) = dw.upgrade() {
                             d.set_busy(false);
                             d.set_error_text(msg.into());
+                            if needs_hv {
+                                d.set_show_verification(true);
+                            }
                         }
                     });
                 }
