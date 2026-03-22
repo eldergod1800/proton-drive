@@ -10,6 +10,7 @@ semver = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 toml = "0.8"
 rusqlite = { version = "0.31", features = ["bundled"] }
 notify = "6"

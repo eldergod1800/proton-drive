@@ -3,7 +3,6 @@ members = [
     "crates/pdrive-core",
     "crates/pdrive-daemon",
     "crates/pdrive-gui",
-    "crates/proton-drive-sdk-stub",
 ]
 resolver = "2"
 
