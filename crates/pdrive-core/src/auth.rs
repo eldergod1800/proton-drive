@@ -40,9 +40,13 @@ impl TokenStore {
 
     /// Save the login password so the daemon can re-derive key passphrases on restart.
     /// Stored securely in the keyring (KWallet / libsecret).
-    pub fn save_password(&self, password: &str) -> anyhow::Result<()> {
-        keyring::Entry::new(KEYRING_SERVICE, KEYRING_PASSWORD)?.set_password(password)?;
-        Ok(())
+    pub async fn save_password(&self, password: &str) -> anyhow::Result<()> {
+        let password = password.to_string();
+        tokio::task::spawn_blocking(move || {
+            keyring::Entry::new(KEYRING_SERVICE, KEYRING_PASSWORD)?.set_password(&password)?;
+            Ok(())
+        })
+        .await?
     }
 
     /// Load the stored session, if any.
@@ -56,13 +60,16 @@ impl TokenStore {
     }
 
     /// Load the stored password, if any.
-    pub fn load_password(&self) -> anyhow::Result<Option<String>> {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_PASSWORD)?;
-        match entry.get_password() {
-            Ok(pw) => Ok(Some(pw)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(anyhow::anyhow!("keyring read password error: {}", e)),
-        }
+    pub async fn load_password(&self) -> anyhow::Result<Option<String>> {
+        tokio::task::spawn_blocking(|| {
+            let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_PASSWORD)?;
+            match entry.get_password() {
+                Ok(pw) => Ok(Some(pw)),
+                Err(keyring::Error::NoEntry) => Ok(None),
+                Err(e) => Err(anyhow::anyhow!("keyring read password error: {}", e)),
+            }
+        })
+        .await?
     }
 
     /// Clear both the session and password from the keyring.
