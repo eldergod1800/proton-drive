@@ -1,68 +1,86 @@
-use age::secrecy::SecretString;
-use std::io::{Read, Write};
+// crates/pdrive-core/src/auth.rs
 use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
 
-fn machine_passphrase() -> SecretString {
-    let machine_id = std::fs::read_to_string("/etc/machine-id")
-        .unwrap_or_else(|_| "unknown-machine".to_string());
-    let username = std::env::var("USER")
-        .or_else(|_| std::env::var("LOGNAME"))
-        .unwrap_or_else(|_| "user".to_string());
-    let input = format!("pdrive-{}-{}", machine_id.trim(), username.trim());
-    // Derive a non-reversible passphrase via BLAKE3
-    let hash = blake3::hash(input.as_bytes());
-    SecretString::from(hash.to_hex().to_string())
+const KEYRING_SERVICE: &str = "proton-drive";
+const KEYRING_SESSION: &str = "session-v2";
+const KEYRING_PASSWORD: &str = "session-password";
+
+/// Everything needed to restore a session after a restart.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredSession {
+    pub session_id: String,
+    pub username: String,
+    pub user_id: String,
+    pub access_token: String,
+    pub refresh_token: String,
+    pub scopes: Vec<String>,
+    pub is_2fa: bool,
+    /// 1 = Single, 2 = Dual
+    pub password_mode: u8,
 }
 
-pub struct TokenStore {
-    path: PathBuf,
-}
+pub struct TokenStore;
 
 impl TokenStore {
-    pub fn new(path: PathBuf) -> Self {
-        Self { path }
+    pub fn new(_path: PathBuf) -> Self {
+        Self
     }
 
     pub fn default_path() -> PathBuf {
-        dirs::data_local_dir()
-            .or_else(|| dirs::home_dir().map(|h| h.join(".local/share")))
-            .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("pdrive")
-            .join("session.age")
+        PathBuf::new()
     }
 
-    pub async fn save(&self, token: &str) -> anyhow::Result<()> {
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let passphrase = machine_passphrase();
-        let encryptor = age::Encryptor::with_user_passphrase(passphrase);
-        let mut encrypted = vec![];
-        let mut writer = encryptor.wrap_output(&mut encrypted)?;
-        writer.write_all(token.as_bytes())?;
-        writer.finish()?;
-        std::fs::write(&self.path, &encrypted)?;
+    /// Save the full session data. Separate from the password.
+    pub async fn save_session(&self, session: &StoredSession) -> anyhow::Result<()> {
+        let json = serde_json::to_string(session)?;
+        keyring::Entry::new(KEYRING_SERVICE, KEYRING_SESSION)?.set_password(&json)?;
         Ok(())
     }
 
-    pub async fn load(&self) -> anyhow::Result<Option<String>> {
-        if !self.path.exists() {
-            return Ok(None);
-        }
-        let encrypted = std::fs::read(&self.path)?;
-        let passphrase = machine_passphrase();
-        let decryptor = age::Decryptor::new(&encrypted[..])?;
-        let identity = age::scrypt::Identity::new(passphrase);
-        let mut reader = decryptor.decrypt(std::iter::once(&identity as &dyn age::Identity))?;
-        let mut plaintext = String::new();
-        reader.read_to_string(&mut plaintext)?;
-        Ok(Some(plaintext))
+    /// Save the login password so the daemon can re-derive key passphrases on restart.
+    /// Stored securely in the keyring (KWallet / libsecret).
+    pub fn save_password(&self, password: &str) -> anyhow::Result<()> {
+        keyring::Entry::new(KEYRING_SERVICE, KEYRING_PASSWORD)?.set_password(password)?;
+        Ok(())
     }
 
+    /// Load the stored session, if any.
+    pub async fn load_session(&self) -> anyhow::Result<Option<StoredSession>> {
+        let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_SESSION)?;
+        match entry.get_password() {
+            Ok(json) => Ok(Some(serde_json::from_str(&json)?)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(anyhow::anyhow!("keyring read error: {}", e)),
+        }
+    }
+
+    /// Load the stored password, if any.
+    pub fn load_password(&self) -> anyhow::Result<Option<String>> {
+        let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_PASSWORD)?;
+        match entry.get_password() {
+            Ok(pw) => Ok(Some(pw)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(anyhow::anyhow!("keyring read password error: {}", e)),
+        }
+    }
+
+    /// Clear both the session and password from the keyring.
     pub fn clear(&self) -> anyhow::Result<()> {
-        if self.path.exists() {
-            std::fs::remove_file(&self.path)?;
+        for entry_name in &[KEYRING_SESSION, KEYRING_PASSWORD] {
+            let entry = keyring::Entry::new(KEYRING_SERVICE, entry_name)?;
+            match entry.delete_password() {
+                Ok(()) | Err(keyring::Error::NoEntry) => {}
+                Err(e) => return Err(anyhow::anyhow!("keyring delete error: {}", e)),
+            }
         }
         Ok(())
+    }
+
+    // ── Backward-compat shim used by GUI startup check ────────────────────
+    /// Returns the session_id string if a session is stored. Used by GUI to
+    /// test whether a session exists without needing the full struct.
+    pub async fn load(&self) -> anyhow::Result<Option<String>> {
+        Ok(self.load_session().await?.map(|s| s.session_id))
     }
 }
