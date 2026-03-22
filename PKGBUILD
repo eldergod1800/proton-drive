@@ -1,15 +1,15 @@
-# Maintainer: YOUR_NAME <YOUR_EMAIL>
+# Maintainer: eldergod1800
 pkgname=proton-drive
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="Proton Drive desktop client for KDE Plasma"
 arch=('x86_64')
-url="https://github.com/YOUR_USERNAME/proton-drive"
+url="https://github.com/eldergod1800/proton-drive"
 license=('GPL-3.0-or-later')
 depends=('dbus')
 makedepends=('rust' 'cargo')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('b11eb660700851816b381c1d052420c252d411304846e0da907e3c382a18f9ca')
 
 prepare() {
     cd "$pkgname-$pkgver"
