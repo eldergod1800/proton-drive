@@ -1,6 +1,6 @@
 mod dbus;
 
-use pdrive_core::config::Config;
+use pdrive_core::{auth::TokenStore, config::Config, drive::DriveClient};
 use zbus::connection;
 
 #[tokio::main]
@@ -9,7 +9,29 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("pdrive-daemon starting");
 
     let config = Config::load()?;
-    let interface = dbus::PDriveInterface::new(config);
+    let store = TokenStore::new(TokenStore::default_path());
+
+    let drive = match (store.load_session().await?, store.load_password().await?) {
+        (Some(session), Some(password)) => {
+            tracing::info!("restoring session for {}", session.username);
+            match DriveClient::from_stored(&session, &password).await {
+                Ok(client) => {
+                    tracing::info!("session restored successfully");
+                    Some(client)
+                }
+                Err(e) => {
+                    tracing::warn!("failed to restore session: {} — browsing disabled", e);
+                    None
+                }
+            }
+        }
+        _ => {
+            tracing::warn!("no stored session — browsing disabled until user logs in");
+            None
+        }
+    };
+
+    let interface = dbus::PDriveInterface::new(config, drive);
 
     let _conn = connection::Builder::session()?
         .name("org.protonmail.PDrive")?
@@ -17,10 +39,7 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .await?;
 
-    tracing::info!("D-Bus interface registered at {} on {}", dbus::OBJECT_PATH, dbus::INTERFACE_NAME);
-    tracing::info!("pdrive-daemon ready");
-
-    // Keep running
+    tracing::info!("D-Bus interface registered, daemon ready");
     std::future::pending::<()>().await;
     Ok(())
 }
