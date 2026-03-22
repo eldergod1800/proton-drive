@@ -1,6 +1,6 @@
 # Maintainer: eldergod1800
 pkgname=proton-drive
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc="Proton Drive desktop client for KDE Plasma"
 arch=('x86_64')
@@ -13,19 +13,19 @@ sha256sums=('b11eb660700851816b381c1d052420c252d411304846e0da907e3c382a18f9ca')
 
 prepare() {
     cd "$pkgname-$pkgver"
-    cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
+    cargo fetch --target "$CARCH-unknown-linux-gnu"
 }
 
 build() {
     cd "$pkgname-$pkgver"
     export RUSTUP_TOOLCHAIN=stable
     export CARGO_TARGET_DIR=target
-    cargo build --frozen --release --bin pdrive --bin pdrive-daemon
+    cargo build --release --bin pdrive --bin pdrive-daemon
 }
 
 check() {
     cd "$pkgname-$pkgver"
-    cargo test --frozen --lib -p pdrive-core
+    cargo test --lib -p pdrive-core
 }
 
 package() {
