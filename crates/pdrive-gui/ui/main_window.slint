@@ -1,27 +1,5 @@
-import { Button, LineEdit, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 
-// ── Theme ─────────────────────────────────────────────────────────────────────
-global Theme {
-    in-out property <bool> dark: false;
-
-    out property <color> bg:           dark ? #1e1e2e : #ffffff;
-    out property <color> sidebar-bg:   dark ? #181825 : #f4f4f7;
-    out property <color> text:         dark ? #cdd6f4 : #1a1a2e;
-    out property <color> subtext:      dark ? #a6adc8 : #888888;
-    out property <color> divider:      dark ? #313244 : #e0e0e0;
-    out property <color> hover:        dark ? #45475a : #e8e8ee;
-    out property <color> active-bg:    dark ? #2a1f5e : #ede9ff;
-    out property <color> active-text:  dark ? #cba6f7 : #6d4aff;
-    out property <color> row-hover:    dark ? #1e1e3f : #f5f0ff;
-    out property <color> header-bg:    dark ? #181825 : #fafafa;
-    out property <color> statusbar-bg: dark ? #181825 : #f4f4f7;
-    out property <color> accent:       dark ? #cba6f7 : #6d4aff;
-    out property <color> accent-hover: dark ? #b08fe8 : #5a38e8;
-    out property <color> error-bg:     dark ? #3d1515 : #fff0f0;
-    out property <color> storage-bg:   dark ? #2a1f5e : #f0ecff;
-}
-
-// ── Data structs ──────────────────────────────────────────────────────────────
 export struct FileEntry {
     name: string,
     is-dir: bool,
@@ -34,31 +12,65 @@ export struct SidebarEntry {
     icon: string,
 }
 
-// ── Main window ───────────────────────────────────────────────────────────────
 export component MainWindow inherits Window {
     title: "Proton Drive";
     preferred-width: 1024px;
     preferred-height: 680px;
-    background: Theme.bg;
 
-    in-out property <string>       status-text: "Ready";
-    in-out property <string>       daemon-status: "connecting...";
-    in-out property <int>          active-sidebar: 0;
-    in-out property <[FileEntry]>  file-entries: [];
-    in-out property <string>       current-path: "/";
+    // ── Dark mode ─────────────────────────────────────────────────────
+    in-out property <bool> dark-mode: false;
+
+    // ── Palette ───────────────────────────────────────────────────────
+    property <color> c-bg:          dark-mode ? #1e1e2e : #ffffff;
+    property <color> c-sidebar:     dark-mode ? #181825 : #f4f4f7;
+    property <color> c-text:        dark-mode ? #cdd6f4 : #1a1a2e;
+    property <color> c-subtext:     dark-mode ? #a6adc8 : #888888;
+    property <color> c-divider:     dark-mode ? #313244 : #e0e0e0;
+    property <color> c-hover:       dark-mode ? #45475a : #e8e8ee;
+    property <color> c-active-bg:   dark-mode ? #2a1f5e : #ede9ff;
+    property <color> c-active-text: dark-mode ? #cba6f7 : #6d4aff;
+    property <color> c-row-hover:   dark-mode ? #1e1e3f : #f5f0ff;
+    property <color> c-header:      dark-mode ? #181825 : #fafafa;
+    property <color> c-status:      dark-mode ? #181825 : #f4f4f7;
+    property <color> c-accent:      dark-mode ? #cba6f7 : #6d4aff;
+    property <color> c-accent-h:    dark-mode ? #b08fe8 : #5a38e8;
+    property <color> c-menu-bg:     dark-mode ? #24273a : #ffffff;
+    property <color> c-menu-border: dark-mode ? #414559 : #d0d0d0;
+
+    background: c-bg;
+
+    // ── Data ──────────────────────────────────────────────────────────
+    in-out property <string>         status-text: "Ready";
+    in-out property <string>         daemon-status: "connecting...";
+    in-out property <int>            active-sidebar: 0;
+    in-out property <[FileEntry]>    file-entries: [];
+    in-out property <string>         current-path: "/";
+    in-out property <float>          storage-ratio: 0.0;
+    in-out property <string>         storage-used: "";
+    in-out property <string>         storage-total: "";
     in-out property <[SidebarEntry]> sidebar-entries: [
-        { label: "My Files",     path: "/",          icon: "🗂" },
-        { label: "Computers",    path: "/computers",  icon: "🖥" },
-        { label: "Sync Folders", path: "/sync",       icon: "🔄" },
+        { label: "My Files",     path: "/",         icon: "🗂" },
+        { label: "Computers",    path: "/computers", icon: "🖥" },
     ];
 
+    // ── Internal state ────────────────────────────────────────────────
+    property <bool> user-menu-open: false;
+    property <bool> new-menu-open: false;
+
+    // ── Callbacks ─────────────────────────────────────────────────────
     callback browse-requested(string);
-    callback upload-clicked();
+    callback open-file-requested(string);
+    callback navigate-up();
+    callback new-folder-requested();
+    callback new-file-requested();
+    callback upload-files-requested();
+    callback upload-folder-requested();
     callback logout-requested();
     callback toggle-dark-mode();
 
-    toggle-dark-mode => { Theme.dark = !Theme.dark; }
-
+    // ══════════════════════════════════════════════════════════════════
+    // Main layout
+    // ══════════════════════════════════════════════════════════════════
     HorizontalBox {
         padding: 0;
         spacing: 0;
@@ -66,7 +78,7 @@ export component MainWindow inherits Window {
         // ── Sidebar ───────────────────────────────────────────────────
         Rectangle {
             width: 210px;
-            background: Theme.sidebar-bg;
+            background: root.c-sidebar;
 
             VerticalBox {
                 padding: 12px;
@@ -79,23 +91,12 @@ export component MainWindow inherits Window {
                         padding: 4px;
                         spacing: 8px;
                         alignment: start;
-                        Text {
-                            text: "⬡";
-                            font-size: 24px;
-                            color: Theme.accent;
-                            vertical-alignment: center;
-                        }
-                        Text {
-                            text: "Proton Drive";
-                            font-size: 15px;
-                            font-weight: 700;
-                            color: Theme.text;
-                            vertical-alignment: center;
-                        }
+                        Text { text: "⬡"; font-size: 24px; color: root.c-accent; vertical-alignment: center; }
+                        Text { text: "Proton Drive"; font-size: 15px; font-weight: 700; color: root.c-text; vertical-alignment: center; }
                     }
                 }
 
-                Rectangle { height: 1px; background: Theme.divider; }
+                Rectangle { height: 1px; background: root.c-divider; }
                 Rectangle { height: 8px; }
 
                 // Nav items
@@ -103,31 +104,30 @@ export component MainWindow inherits Window {
                     height: 42px;
                     border-radius: 8px;
                     background: root.active-sidebar == i
-                        ? Theme.active-bg
-                        : (nav-touch.has-hover ? Theme.hover : transparent);
+                        ? root.c-active-bg
+                        : (nav-touch.has-hover ? root.c-hover : transparent);
 
                     nav-touch := TouchArea {
                         clicked => {
                             root.active-sidebar = i;
+                            root.current-path = entry.path;
                             root.browse-requested(entry.path);
                         }
                     }
-
                     HorizontalBox {
                         padding-left: 12px;
-                        padding-right: 8px;
                         spacing: 10px;
                         alignment: start;
                         Text {
                             text: entry.icon;
                             font-size: 16px;
-                            color: root.active-sidebar == i ? Theme.active-text : Theme.subtext;
+                            color: root.active-sidebar == i ? root.c-active-text : root.c-subtext;
                             vertical-alignment: center;
                         }
                         Text {
                             text: entry.label;
                             font-size: 13px;
-                            color: root.active-sidebar == i ? Theme.active-text : Theme.text;
+                            color: root.active-sidebar == i ? root.c-active-text : root.c-text;
                             font-weight: root.active-sidebar == i ? 600 : 400;
                             vertical-alignment: center;
                         }
@@ -137,71 +137,69 @@ export component MainWindow inherits Window {
                 // Spacer
                 Rectangle { vertical-stretch: 1; }
 
-                Rectangle { height: 1px; background: Theme.divider; }
+                // ── Storage widget ────────────────────────────────────
+                Rectangle {
+                    height: 76px;
+                    border-radius: 10px;
+                    background: root.c-active-bg;
+
+                    VerticalBox {
+                        padding: 10px;
+                        spacing: 5px;
+
+                        HorizontalBox {
+                            spacing: 0;
+                            alignment: stretch;
+                            Text {
+                                text: "Storage";
+                                font-size: 11px;
+                                font-weight: 700;
+                                color: root.c-accent;
+                                horizontal-stretch: 1;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: root.storage-used == ""
+                                    ? "–"
+                                    : root.storage-used + " / " + root.storage-total;
+                                font-size: 10px;
+                                color: root.c-subtext;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // Progress bar track
+                        Rectangle {
+                            height: 5px;
+                            border-radius: 3px;
+                            background: root.c-divider;
+
+                            // Progress fill
+                            Rectangle {
+                                x: 0;
+                                y: 0;
+                                width: root.storage-ratio * parent.width;
+                                height: 5px;
+                                border-radius: 3px;
+                                background: root.c-accent;
+                            }
+                        }
+
+                        Text {
+                            text: root.storage-used == ""
+                                ? "Connect to see usage"
+                                : root.storage-used + " used";
+                            font-size: 10px;
+                            color: root.c-subtext;
+                        }
+                    }
+                }
+
                 Rectangle { height: 8px; }
-
-                // Dark mode toggle
-                Rectangle {
-                    height: 38px;
-                    border-radius: 8px;
-                    background: dm-touch.has-hover ? Theme.hover : transparent;
-
-                    dm-touch := TouchArea {
-                        clicked => { root.toggle-dark-mode(); }
-                    }
-
-                    HorizontalBox {
-                        padding-left: 12px;
-                        spacing: 10px;
-                        alignment: start;
-                        Text {
-                            text: Theme.dark ? "☀" : "🌙";
-                            font-size: 16px;
-                            color: Theme.subtext;
-                            vertical-alignment: center;
-                        }
-                        Text {
-                            text: Theme.dark ? "Light mode" : "Dark mode";
-                            font-size: 13px;
-                            color: Theme.text;
-                            vertical-alignment: center;
-                        }
-                    }
-                }
-
-                // Sign out
-                Rectangle {
-                    height: 38px;
-                    border-radius: 8px;
-                    background: so-touch.has-hover ? Theme.hover : transparent;
-
-                    so-touch := TouchArea {
-                        clicked => { root.logout-requested(); }
-                    }
-
-                    HorizontalBox {
-                        padding-left: 12px;
-                        spacing: 10px;
-                        alignment: start;
-                        Text {
-                            text: "🚪";
-                            font-size: 16px;
-                            color: Theme.subtext;
-                            vertical-alignment: center;
-                        }
-                        Text {
-                            text: "Sign out";
-                            font-size: 13px;
-                            color: Theme.text;
-                            vertical-alignment: center;
-                        }
-                    }
-                }
             }
         }
 
-        // Sidebar divider
-        Rectangle { width: 1px; background: Theme.divider; }
+        Rectangle { width: 1px; background: root.c-divider; }
 
         // ── Main panel ────────────────────────────────────────────────
         VerticalBox {
@@ -211,119 +209,164 @@ export component MainWindow inherits Window {
             // Toolbar
             Rectangle {
                 height: 56px;
-                background: Theme.bg;
+                background: root.c-bg;
 
                 HorizontalBox {
                     padding-left: 16px;
-                    padding-right: 16px;
+                    padding-right: 12px;
                     padding-top: 8px;
                     padding-bottom: 8px;
-                    spacing: 10px;
+                    spacing: 6px;
                     alignment: stretch;
 
-                    // Current path breadcrumb
+                    // Back button
+                    if root.current-path != "/" && root.current-path != "/computers": Rectangle {
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 6px;
+                        background: back-touch.has-hover ? root.c-hover : transparent;
+                        back-touch := TouchArea { clicked => { root.navigate-up(); } }
+                        Text {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            text: "←";
+                            font-size: 16px;
+                            color: root.c-text;
+                        }
+                    }
+
+                    // Breadcrumb
                     Text {
-                        text: root.current-path;
-                        font-size: 13px;
-                        color: Theme.subtext;
+                        text: root.current-path == "/" || root.current-path == "/computers"                            ? root.sidebar-entries[root.active-sidebar].label
+                            : root.sidebar-entries[root.active-sidebar].label + "  ›  " + root.current-path;
+                        font-size: 14px;
+                        font-weight: 600;
+                        color: root.c-text;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
                     }
 
-                    // Upload button
+                    // ── + New button ──────────────────────────────────
                     Rectangle {
-                        width: 100px;
-                        height: 36px;
+                        width: 84px;
+                        height: 34px;
                         border-radius: 8px;
-                        background: ul-touch.has-hover ? Theme.accent-hover : Theme.accent;
-
-                        ul-touch := TouchArea {
-                            clicked => { root.upload-clicked(); }
+                        background: new-touch.has-hover || root.new-menu-open
+                            ? root.c-accent-h : root.c-accent;
+                        new-touch := TouchArea {
+                            clicked => {
+                                root.new-menu-open = !root.new-menu-open;
+                                root.user-menu-open = false;
+                            }
                         }
-
                         Text {
                             x: (parent.width - self.width) / 2;
                             y: (parent.height - self.height) / 2;
-                            text: "↑  Upload";
+                            text: "+ New";
                             color: #ffffff;
                             font-size: 13px;
-                            font-weight: 600;
+                            font-weight: 700;
+                        }
+                    }
+
+                    // ── Dark mode toggle (sun / moon icon) ────────────
+                    Rectangle {
+                        width: 34px;
+                        height: 34px;
+                        border-radius: 8px;
+                        background: dm-touch.has-hover ? root.c-hover : transparent;
+                        dm-touch := TouchArea { clicked => { root.toggle-dark-mode(); } }
+                        Text {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            // ☀ = sun (currently dark → click for light)
+                            // ☾ = crescent moon (currently light → click for dark)
+                            text: root.dark-mode ? "☀" : "☾";
+                            font-size: 18px;
+                            color: root.c-subtext;
+                        }
+                    }
+
+                    // ── User menu button ──────────────────────────────
+                    Rectangle {
+                        width: 34px;
+                        height: 34px;
+                        border-radius: 17px;
+                        background: user-touch.has-hover || root.user-menu-open
+                            ? root.c-hover
+                            : root.c-active-bg;
+                        user-touch := TouchArea {
+                            clicked => {
+                                root.user-menu-open = !root.user-menu-open;
+                                root.new-menu-open = false;
+                            }
+                        }
+                        Text {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            text: "👤";
+                            font-size: 16px;
+                            color: root.c-accent;
                         }
                     }
                 }
             }
 
-            // Toolbar divider
-            Rectangle { height: 1px; background: Theme.divider; }
+            Rectangle { height: 1px; background: root.c-divider; }
 
             // Column headers
             Rectangle {
                 height: 32px;
-                background: Theme.header-bg;
-
+                background: root.c-header;
                 HorizontalBox {
                     padding-left: 16px;
                     padding-right: 16px;
                     spacing: 0;
                     alignment: stretch;
-                    Text {
-                        text: "Name";
-                        font-size: 11px;
-                        font-weight: 600;
-                        color: Theme.subtext;
-                        horizontal-stretch: 1;
-                        vertical-alignment: center;
-                    }
-                    Text {
-                        text: "Size";
-                        font-size: 11px;
-                        font-weight: 600;
-                        color: Theme.subtext;
-                        width: 90px;
-                        horizontal-alignment: right;
-                        vertical-alignment: center;
-                    }
+                    Text { text: "Name"; font-size: 11px; font-weight: 600; color: root.c-subtext; horizontal-stretch: 1; vertical-alignment: center; }
+                    Text { text: "Size"; font-size: 11px; font-weight: 600; color: root.c-subtext; width: 90px; horizontal-alignment: right; vertical-alignment: center; }
                 }
             }
 
-            Rectangle { height: 1px; background: Theme.divider; }
+            Rectangle { height: 1px; background: root.c-divider; }
 
             // Empty state
             if root.file-entries.length == 0: Rectangle {
                 vertical-stretch: 1;
-                background: Theme.bg;
-
+                background: root.c-bg;
                 VerticalBox {
                     alignment: center;
                     spacing: 10px;
-                    Text {
-                        text: "🗂";
-                        font-size: 52px;
-                        horizontal-alignment: center;
-                    }
-                    Text {
-                        text: "Select a folder from the sidebar";
-                        font-size: 14px;
-                        color: Theme.subtext;
-                        horizontal-alignment: center;
-                    }
+                    Text { text: "🗂"; font-size: 52px; horizontal-alignment: center; }
+                    Text { text: "Select a folder from the sidebar"; font-size: 14px; color: root.c-subtext; horizontal-alignment: center; }
                 }
             }
 
             // File list
             if root.file-entries.length > 0: ScrollView {
                 vertical-stretch: 1;
-
                 VerticalBox {
                     padding: 0;
                     spacing: 0;
-
                     for entry in root.file-entries: Rectangle {
                         height: 42px;
-                        background: row-touch.has-hover ? Theme.row-hover : Theme.bg;
-
-                        row-touch := TouchArea {}
-
+                        background: row-touch.has-hover ? root.c-row-hover : root.c-bg;
+                        row-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.user-menu-open = false;
+                                root.new-menu-open = false;
+                                if entry.is-dir {
+                                    root.browse-requested(
+                                        root.current-path == "/" ? "/" + entry.name : root.current-path + "/" + entry.name
+                                    );
+                                } else {
+                                    root.open-file-requested(
+                                        root.current-path == "/" ? "/" + entry.name : root.current-path + "/" + entry.name
+                                    );
+                                }
+                            }
+                        }
                         HorizontalBox {
                             padding-left: 16px;
                             padding-right: 16px;
@@ -332,25 +375,20 @@ export component MainWindow inherits Window {
                             Text {
                                 text: (entry.is-dir ? "📁  " : "📄  ") + entry.name;
                                 font-size: 13px;
-                                color: Theme.text;
+                                color: root.c-text;
                                 horizontal-stretch: 1;
                                 vertical-alignment: center;
                             }
                             Text {
                                 text: entry.size;
                                 font-size: 12px;
-                                color: Theme.subtext;
+                                color: root.c-subtext;
                                 width: 90px;
                                 horizontal-alignment: right;
                                 vertical-alignment: center;
                             }
                         }
-
-                        Rectangle {
-                            y: parent.height - 1px;
-                            height: 1px;
-                            background: Theme.divider;
-                        }
+                        Rectangle { y: parent.height - 1px; height: 1px; background: root.c-divider; }
                     }
                 }
             }
@@ -358,23 +396,15 @@ export component MainWindow inherits Window {
             // Status bar
             Rectangle {
                 height: 30px;
-                background: Theme.statusbar-bg;
-
+                background: root.c-status;
                 HorizontalBox {
                     padding-left: 16px;
                     padding-right: 16px;
                     spacing: 8px;
                     alignment: stretch;
-                    Text {
-                        text: root.status-text;
-                        font-size: 11px;
-                        color: Theme.subtext;
-                        horizontal-stretch: 1;
-                        vertical-alignment: center;
-                    }
+                    Text { text: root.status-text; font-size: 11px; color: root.c-subtext; horizontal-stretch: 1; vertical-alignment: center; }
                     Rectangle {
-                        width: 8px;
-                        height: 8px;
+                        width: 8px; height: 8px;
                         y: (parent.height - self.height) / 2;
                         border-radius: 4px;
                         background: root.daemon-status == "running" ? #22c55e : #aaaaaa;
@@ -382,8 +412,205 @@ export component MainWindow inherits Window {
                     Text {
                         text: "daemon: " + root.daemon-status;
                         font-size: 11px;
-                        color: root.daemon-status == "running" ? #22c55e : Theme.subtext;
+                        color: root.daemon-status == "running" ? #22c55e : root.c-subtext;
                         vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // + New menu overlay
+    // ══════════════════════════════════════════════════════════════════
+    if root.new-menu-open: Rectangle {
+        x: 0; y: 0;
+        width: root.width; height: root.height;
+        background: transparent;
+
+        TouchArea { clicked => { root.new-menu-open = false; } }
+
+        Rectangle {
+            // Align right edge with the + New button (approx 84+6+34+6+34+12 = 176px from right)
+            x: root.width - 232px;
+            y: 58px;
+            width: 200px;
+            height: 202px;
+            border-radius: 10px;
+            background: root.c-menu-bg;
+            border-width: 1px;
+            border-color: root.c-menu-border;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #00000033;
+            drop-shadow-offset-y: 4px;
+
+            VerticalBox {
+                padding: 6px;
+                spacing: 2px;
+
+                // Section: Create
+                HorizontalBox {
+                    padding-left: 10px;
+                    padding-top: 4px;
+                    padding-bottom: 0;
+                    Text {
+                        text: "CREATE";
+                        font-size: 10px;
+                        font-weight: 700;
+                        color: root.c-subtext;
+                    }
+                }
+
+                Rectangle {
+                    height: 36px;
+                    border-radius: 6px;
+                    background: nf-touch.has-hover ? root.c-hover : transparent;
+                    nf-touch := TouchArea {
+                        clicked => {
+                            root.new-menu-open = false;
+                            root.new-folder-requested();
+                        }
+                    }
+                    HorizontalBox {
+                        padding-left: 10px; spacing: 10px; alignment: start;
+                        Text { text: "📁"; font-size: 15px; color: root.c-subtext; vertical-alignment: center; }
+                        Text { text: "New folder"; font-size: 13px; color: root.c-text; vertical-alignment: center; }
+                    }
+                }
+
+                Rectangle {
+                    height: 36px;
+                    border-radius: 6px;
+                    background: ndoc-touch.has-hover ? root.c-hover : transparent;
+                    ndoc-touch := TouchArea {
+                        clicked => {
+                            root.new-menu-open = false;
+                            root.new-file-requested();
+                        }
+                    }
+                    HorizontalBox {
+                        padding-left: 10px; spacing: 10px; alignment: start;
+                        Text { text: "📄"; font-size: 15px; color: root.c-subtext; vertical-alignment: center; }
+                        Text { text: "New text file"; font-size: 13px; color: root.c-text; vertical-alignment: center; }
+                    }
+                }
+
+                Rectangle { height: 1px; background: root.c-divider; }
+
+                // Section: Upload
+                HorizontalBox {
+                    padding-left: 10px;
+                    padding-top: 4px;
+                    padding-bottom: 0;
+                    Text {
+                        text: "UPLOAD";
+                        font-size: 10px;
+                        font-weight: 700;
+                        color: root.c-subtext;
+                    }
+                }
+
+                Rectangle {
+                    height: 36px;
+                    border-radius: 6px;
+                    background: uf-touch.has-hover ? root.c-hover : transparent;
+                    uf-touch := TouchArea {
+                        clicked => {
+                            root.new-menu-open = false;
+                            root.upload-files-requested();
+                        }
+                    }
+                    HorizontalBox {
+                        padding-left: 10px; spacing: 10px; alignment: start;
+                        Text { text: "⬆"; font-size: 15px; color: root.c-subtext; vertical-alignment: center; }
+                        Text { text: "Upload files"; font-size: 13px; color: root.c-text; vertical-alignment: center; }
+                    }
+                }
+
+                Rectangle {
+                    height: 36px;
+                    border-radius: 6px;
+                    background: udir-touch.has-hover ? root.c-hover : transparent;
+                    udir-touch := TouchArea {
+                        clicked => {
+                            root.new-menu-open = false;
+                            root.upload-folder-requested();
+                        }
+                    }
+                    HorizontalBox {
+                        padding-left: 10px; spacing: 10px; alignment: start;
+                        Text { text: "📂"; font-size: 15px; color: root.c-subtext; vertical-alignment: center; }
+                        Text { text: "Upload folder"; font-size: 13px; color: root.c-text; vertical-alignment: center; }
+                    }
+                }
+            }
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // User menu overlay — renders on top of everything (declared last)
+    // ══════════════════════════════════════════════════════════════════
+    if root.user-menu-open: Rectangle {
+        // Full-window dimmer to catch outside clicks
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        background: transparent;
+
+        TouchArea {
+            clicked => { root.user-menu-open = false; }
+        }
+
+        // Dropdown card — positioned top-right below toolbar
+        Rectangle {
+            x: root.width - 175px;
+            y: 58px;
+            width: 165px;
+            height: 110px;
+            border-radius: 10px;
+            background: root.c-menu-bg;
+            border-width: 1px;
+            border-color: root.c-menu-border;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #00000033;
+            drop-shadow-offset-y: 4px;
+
+            VerticalBox {
+                padding: 6px;
+                spacing: 2px;
+
+                // Header
+                Rectangle {
+                    height: 36px;
+                    HorizontalBox {
+                        padding-left: 8px;
+                        spacing: 8px;
+                        alignment: start;
+                        Text { text: "👤"; font-size: 16px; color: root.c-accent; vertical-alignment: center; }
+                        Text { text: "Account"; font-size: 12px; font-weight: 600; color: root.c-text; vertical-alignment: center; }
+                    }
+                }
+
+                Rectangle { height: 1px; background: root.c-divider; }
+
+                // Sign out row
+                Rectangle {
+                    height: 38px;
+                    border-radius: 6px;
+                    background: so-touch.has-hover ? root.c-hover : transparent;
+                    so-touch := TouchArea {
+                        clicked => {
+                            root.user-menu-open = false;
+                            root.logout-requested();
+                        }
+                    }
+                    HorizontalBox {
+                        padding-left: 10px;
+                        spacing: 8px;
+                        alignment: start;
+                        Text { text: "⎋"; font-size: 15px; color: root.c-subtext; vertical-alignment: center; }
+                        Text { text: "Sign out"; font-size: 13px; color: root.c-text; vertical-alignment: center; }
                     }
                 }
             }

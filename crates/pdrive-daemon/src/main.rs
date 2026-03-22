@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    let interface = dbus::PDriveInterface::new(config, drive);
+    let interface = dbus::PDriveInterface::new(config, drive, TokenStore::default_path());
 
     let _conn = connection::Builder::session()?
         .name("org.protonmail.PDrive")?

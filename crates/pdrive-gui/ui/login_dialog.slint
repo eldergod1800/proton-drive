@@ -9,11 +9,13 @@ export component LoginDialog inherits Window {
     in-out property <string> error-text: "";
     in-out property <bool>   busy: false;
     in-out property <bool>   show-verification: false;
-    in-out property <string> verification-label: "Check your email for a verification code";
-    in-out property <string> verification-code-text: "";
+    in-out property <string> verification-label: "Human verification required. Open the page in your browser, complete the captcha, then click Sign In.";
+    in-out property <string> captcha-url: "";
+    in-out property <bool>   show-2fa: false;
 
-    callback send-verification-code-requested(string /* username */);
-    callback login-requested(string /* username */, string /* password */, string /* verification_code */);
+    callback open-captcha-page-requested();
+    callback login-requested(string /* username */, string /* password */);
+    callback totp-requested(string /* totp code */);
 
     Rectangle {
         background: #ffffff;
@@ -88,18 +90,19 @@ export component LoginDialog inherits Window {
 
             Rectangle { height: 8px; }
 
-            // Verification code section (shown only when show-verification is true)
+            // Captcha verification section (shown only when show-verification is true)
             if root.show-verification: VerticalBox {
                 spacing: 0;
                 padding: 0;
 
                 Rectangle {
-                    height: 36px;
+                    height: 52px;
                     border-radius: 6px;
                     background: #f0f4ff;
 
                     Text {
                         x: 10px;
+                        width: parent.width - 20px;
                         y: (parent.height - self.height) / 2;
                         text: root.verification-label;
                         color: #444488;
@@ -110,50 +113,43 @@ export component LoginDialog inherits Window {
 
                 Rectangle { height: 8px; }
 
-                HorizontalLayout {
-                    spacing: 8px;
+                Rectangle {
+                    height: 36px;
+                    border-radius: 8px;
+                    background: root.busy ? #d0d0d0 : (captcha-touch.has-hover ? #5a38e8 : #6d4aff);
 
-                    Text {
-                        text: "Verification Code";
-                        font-size: 12px;
-                        font-weight: 600;
-                        color: #444444;
-                        vertical-alignment: center;
+                    captcha-touch := TouchArea {
+                        enabled: !root.busy;
+                        clicked => {
+                            root.open-captcha-page-requested();
+                        }
                     }
 
-                    Rectangle {
-                        height: 28px;
-                        border-radius: 6px;
-                        background: root.busy ? #d0d0d0 : (send-touch.has-hover ? #5a38e8 : #6d4aff);
-                        width: 90px;
-
-                        send-touch := TouchArea {
-                            enabled: !root.busy;
-                            clicked => {
-                                root.send-verification-code-requested(username-field.text);
-                            }
-                        }
-
-                        Text {
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                            text: "Send Code";
-                            color: #ffffff;
-                            font-size: 11px;
-                            font-weight: 600;
-                        }
+                    Text {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        text: "Open Verification Page";
+                        color: #ffffff;
+                        font-size: 12px;
+                        font-weight: 600;
                     }
                 }
 
                 Rectangle { height: 6px; }
 
-                verification-field := LineEdit {
-                    placeholder-text: "Enter code from email";
-                    enabled: !root.busy;
-                    height: 40px;
-                    edited => {
-                        root.verification-code-text = self.text;
-                    }
+                // Copyable URL so user can paste into private/incognito window
+                Text {
+                    text: "Or copy URL to paste in a private browser window:";
+                    font-size: 11px;
+                    color: #888888;
+                    wrap: word-wrap;
+                }
+                Rectangle { height: 4px; }
+                url-field := LineEdit {
+                    text: root.captcha-url;
+                    enabled: true;
+                    height: 32px;
+                    font-size: 10px;
                 }
 
                 Rectangle { height: 8px; }
@@ -175,12 +171,59 @@ export component LoginDialog inherits Window {
                 }
             }
 
-            if root.error-text == "": Rectangle { height: 36px; }
+            // 2FA section (shown only when show-2fa is true) — input + Verify button in one block
+            if root.show-2fa: VerticalBox {
+                spacing: 0;
+                padding: 0;
+
+                Text {
+                    text: "Two-factor authentication";
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #444444;
+                }
+                Rectangle { height: 6px; }
+                totp-field := LineEdit {
+                    placeholder-text: "6-digit code";
+                    height: 40px;
+                }
+                Rectangle { height: 8px; }
+
+                if root.error-text == "": Rectangle { height: 36px; }
+
+                Rectangle { height: 8px; }
+
+                Rectangle {
+                    height: 44px;
+                    border-radius: 10px;
+                    background: root.busy
+                        ? #a08fff
+                        : (totp-btn-touch.has-hover ? #5a38e8 : #6d4aff);
+
+                    totp-btn-touch := TouchArea {
+                        enabled: !root.busy;
+                        clicked => {
+                            root.totp-requested(totp-field.text);
+                        }
+                    }
+
+                    Text {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        text: root.busy ? "Verifying..." : "Verify";
+                        color: #ffffff;
+                        font-size: 14px;
+                        font-weight: 600;
+                    }
+                }
+            }
+
+            if root.error-text == "" && !root.show-2fa: Rectangle { height: 36px; }
 
             Rectangle { height: 8px; }
 
-            // Sign in button
-            Rectangle {
+            // Sign in button (hidden when 2FA is active)
+            if !root.show-2fa: Rectangle {
                 height: 44px;
                 border-radius: 10px;
                 background: root.busy
@@ -193,7 +236,6 @@ export component LoginDialog inherits Window {
                         root.login-requested(
                             username-field.text,
                             password-field.text,
-                            root.show-verification ? root.verification-code-text : ""
                         );
                     }
                 }

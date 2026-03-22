@@ -42,8 +42,8 @@ impl SyncEngine {
                                         pair_remote: remote_clone.clone(),
                                     },
                                 };
-                                // Best-effort send — if channel is full, skip
-                                let _ = tx_clone.blocking_send(sync_event);
+                                // Best-effort: drop event if channel is full rather than stalling the watcher thread
+                                let _ = tx_clone.try_send(sync_event);
                             }
                         }
                     }

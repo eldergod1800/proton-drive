@@ -5,7 +5,7 @@ mod tray;
 
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use tray::PdriveTray;
-use pdrive_core::{auth::TokenStore, drive::DriveClient};
+use pdrive_core::{auth::TokenStore, drive::{DriveClient, HumanVerificationRequired, TwoFactorRequired}};
 use zeroize::Zeroizing;
 
 #[derive(serde::Deserialize)]
@@ -13,6 +13,19 @@ struct BrowseEntry {
     name: String,
     is_dir: bool,
     size: String,
+}
+
+fn human_size(bytes: u64) -> String {
+    const GB: u64 = 1024 * 1024 * 1024;
+    const MB: u64 = 1024 * 1024;
+    const KB: u64 = 1024;
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    }
 }
 
 // ── Dark mode persistence ─────────────────────────────────────────────────────
@@ -80,47 +93,26 @@ fn show_login_or_main(rt: Arc<tokio::runtime::Runtime>) {
     let login_done_clone = login_done.clone();
     let rt_login = rt.clone();
 
-    // Shared HV token state: set when login() fails with 9001
-    let hv_token: Arc<std::sync::Mutex<Option<String>>> = Arc::new(std::sync::Mutex::new(None));
+    // "Open Verification Page" fallback — only used if python3 WebView launch fails
+    let hv_url_fallback: Arc<std::sync::Mutex<Option<String>>> =
+        Arc::new(std::sync::Mutex::new(None));
 
-    // "Send Code" button handler
-    let dw_send = dialog_weak.clone();
-    let rt_send = rt_login.clone();
-    let hv_token_send = hv_token.clone();
-    dialog.on_send_verification_code_requested(move |username| {
-        let username = username.to_string();
-        let token = hv_token_send.lock().unwrap().clone();
-        if let Some(tok) = token {
-            let dw2 = dw_send.clone();
-            rt_send.spawn(async move {
-                match DriveClient::send_email_verification(&username, &tok).await {
-                    Ok(()) => {
-                        let _ = slint::invoke_from_event_loop(move || {
-                            if let Some(d) = dw2.upgrade() {
-                                d.set_error_text("".into());
-                                d.set_verification_label("Code sent — check your email".into());
-                            }
-                        });
-                    }
-                    Err(e) => {
-                        let msg = format!("Failed to send code: {}", e);
-                        let _ = slint::invoke_from_event_loop(move || {
-                            if let Some(d) = dw2.upgrade() {
-                                d.set_error_text(msg.into());
-                            }
-                        });
-                    }
-                }
-            });
+    // Pending 2FA state — set when SRP + captcha succeeded but TOTP is required
+    let pending_2fa: Arc<std::sync::Mutex<Option<TwoFactorRequired>>> =
+        Arc::new(std::sync::Mutex::new(None));
+
+    let hv_url_open = hv_url_fallback.clone();
+    dialog.on_open_captcha_page_requested(move || {
+        if let Some(ref url) = *hv_url_open.lock().unwrap() {
+            let _ = std::process::Command::new("xdg-open").arg(url).spawn();
         }
     });
 
-    let hv_token_login = hv_token.clone();
-    dialog.on_login_requested(move |username, password, verification_code| {
-        // Zeroize the password after use (SEC-5)
+    let pending_2fa_login = pending_2fa.clone();
+
+    dialog.on_login_requested(move |username, password| {
         let username = username.to_string();
         let password = Zeroizing::new(password.to_string());
-        let verification_code = verification_code.to_string();
 
         if let Some(d) = dialog_weak.upgrade() {
             d.set_busy(true);
@@ -129,36 +121,178 @@ fn show_login_or_main(rt: Arc<tokio::runtime::Runtime>) {
 
         let dw = dialog_weak.clone();
         let done = login_done_clone.clone();
-        let hv_token_inner = hv_token_login.clone();
+        let hv_url_store = hv_url_fallback.clone();
+        let pending_2fa_store = pending_2fa_login.clone();
 
-        // BUG-3/BUG-7: spawn on background runtime, never block_on in this callback
         rt_login.spawn(async move {
-            // If user has entered a verification code, use the HV login path
-            let result = if verification_code.trim().is_empty() {
-                DriveClient::login(&username, &password).await
-            } else {
-                DriveClient::login_with_verification_code(
-                    &username,
-                    &password,
-                    verification_code.trim(),
-                )
-                .await
+            let first_result = DriveClient::login(&username, &password).await;
+
+            let final_result = match first_result {
+                Ok(client) => Ok(client),
+                Err(e) => {
+                    // Check if this is a captcha challenge (HumanVerificationRequired error)
+                    if let Some(hv) = e.downcast_ref::<HumanVerificationRequired>() {
+                        let url = hv.0.web_url.clone();
+                        *hv_url_store.lock().unwrap() = Some(url.clone());
+
+                        let dw2 = dw.clone();
+                        let url_for_ui = url.clone();
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(d) = dw2.upgrade() {
+                                d.set_error_text(
+                                    "Verification required — complete the captcha in the window that opened.".into()
+                                );
+                                d.set_show_verification(true);
+                                d.set_captcha_url(url_for_ui.into());
+                            }
+                        });
+
+                        // Downcast to take ownership of PendingAuth
+                        match e.downcast::<HumanVerificationRequired>() {
+                            Ok(hv_owned) => {
+                                let pending = hv_owned.0;
+                                let hv_token = pending.hv_token.clone();
+                                let script = include_str!("captcha_webview.py");
+                                match tokio::process::Command::new("python3")
+                                    .arg("-c").arg(script)
+                                    .arg(&url)
+                                    .arg(&hv_token)
+                                    .output().await
+                                {
+                                    Ok(output) => {
+                                        let stderr = String::from_utf8_lossy(&output.stderr);
+                                        for line in stderr.lines() {
+                                            tracing::info!("captcha_webview: {}", line);
+                                        }
+                                        // Python emits one line: the combined token from pm_captcha/HUMAN_VERIFICATION_SUCCESS
+                                        // Format: <HV_TOKEN>:<signature><captcha_hex>
+                                        let token = String::from_utf8_lossy(&output.stdout)
+                                            .lines()
+                                            .find(|l| !l.trim().is_empty())
+                                            .map(|l| l.trim().to_string());
+                                        tracing::info!("captcha combined token: {:?}", token);
+                                        if let Some(token) = token {
+                                            DriveClient::login_complete_with_captcha(
+                                                pending, &password, &token,
+                                            ).await
+                                        } else {
+                                            Err(anyhow::anyhow!("Captcha window closed — please try again."))
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!("python3 captcha webview failed: {}", e);
+                                        Err(anyhow::anyhow!(
+                                            "Could not open verification window. Use \"Open Verification Page\" below."
+                                        ))
+                                    }
+                                }
+                            }
+                            Err(e) => Err(anyhow::anyhow!("{:#}", e)),
+                        }
+                    } else {
+                        Err(e)
+                    }
+                }
             };
 
-            match result {
+            match final_result {
                 Ok(client) => {
                     let store = TokenStore::new(TokenStore::default_path());
                     match client.session_data().await {
                         Ok(session_data) => {
                             if let Err(e) = store.save_session(&session_data).await {
-                                tracing::error!("failed to save session to keyring — next launch will require re-login: {}", e);
+                                tracing::error!("failed to save session: {}", e);
                             }
                         }
-                        Err(e) => tracing::error!("failed to get session data — session will not persist: {}", e),
+                        Err(e) => tracing::error!("failed to get session data: {}", e),
                     }
-                    // Store password for daemon restart (stays in encrypted keyring)
                     if let Err(e) = store.save_password(password.as_str()).await {
-                        tracing::error!("failed to save password to keyring — file names may be unreadable on next launch: {}", e);
+                        tracing::error!("failed to save password: {}", e);
+                    }
+                    done.store(true, Ordering::Relaxed);
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(d) = dw.upgrade() {
+                            let _ = d.hide();
+                        }
+                    });
+                }
+                Err(e) if e.downcast_ref::<TwoFactorRequired>().is_some() => {
+                    match e.downcast::<TwoFactorRequired>() {
+                        Ok(tfa) => {
+                            *pending_2fa_store.lock().unwrap() = Some(tfa);
+                            let _ = slint::invoke_from_event_loop(move || {
+                                if let Some(d) = dw.upgrade() {
+                                    d.set_busy(false);
+                                    d.set_show_2fa(true);
+                                    d.set_error_text(
+                                        "Enter your two-factor authentication code.".into()
+                                    );
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            let msg = e.to_string();
+                            let _ = slint::invoke_from_event_loop(move || {
+                                if let Some(d) = dw.upgrade() {
+                                    d.set_busy(false);
+                                    d.set_error_text(msg.into());
+                                }
+                            });
+                        }
+                    }
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(d) = dw.upgrade() {
+                            d.set_busy(false);
+                            d.set_error_text(msg.into());
+                        }
+                    });
+                }
+            }
+        });
+    });
+
+    let dialog_weak_totp = dialog.as_weak();
+    let login_done_totp = login_done.clone();
+    let rt_totp = rt.clone();
+    dialog.on_totp_requested(move |totp_code| {
+        let totp_code = totp_code.to_string();
+        let pending = pending_2fa.lock().unwrap().take();
+        let Some(tfa) = pending else {
+            tracing::warn!("on_totp_requested: no pending 2FA session");
+            return;
+        };
+        let password = tfa.password.clone();
+
+        let dw = dialog_weak_totp.clone();
+        let done = login_done_totp.clone();
+
+        let _ = slint::invoke_from_event_loop({
+            let dw = dw.clone();
+            move || {
+                if let Some(d) = dw.upgrade() {
+                    d.set_busy(true);
+                    d.set_error_text("".into());
+                }
+            }
+        });
+
+        rt_totp.spawn(async move {
+            match DriveClient::login_complete_with_2fa(tfa.session, &password, &totp_code).await {
+                Ok(client) => {
+                    let store = TokenStore::new(TokenStore::default_path());
+                    match client.session_data().await {
+                        Ok(session_data) => {
+                            if let Err(e) = store.save_session(&session_data).await {
+                                tracing::error!("failed to save session: {}", e);
+                            }
+                        }
+                        Err(e) => tracing::error!("failed to get session data: {}", e),
+                    }
+                    if let Err(e) = store.save_password(&password).await {
+                        tracing::error!("failed to save password: {}", e);
                     }
                     done.store(true, Ordering::Relaxed);
                     let _ = slint::invoke_from_event_loop(move || {
@@ -168,26 +302,12 @@ fn show_login_or_main(rt: Arc<tokio::runtime::Runtime>) {
                     });
                 }
                 Err(e) => {
-                    // Check if this is a 9001 human verification error
-                    let hv_tok = DriveClient::extract_hv_token(&e);
-                    let needs_hv = hv_tok.is_some();
-                    if let Some(tok) = hv_tok {
-                        *hv_token_inner.lock().unwrap() = Some(tok);
-                    }
-
-                    let msg = if needs_hv {
-                        "Human verification required. Click \"Send Code\" to receive an email code, then enter it below.".to_string()
-                    } else {
-                        format!("Login failed: {}", e)
-                    };
-
+                    let msg = format!("{} — please try signing in again", e);
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(d) = dw.upgrade() {
                             d.set_busy(false);
+                            d.set_show_2fa(false);
                             d.set_error_text(msg.into());
-                            if needs_hv {
-                                d.set_show_verification(true);
-                            }
                         }
                     });
                 }
@@ -278,6 +398,26 @@ fn run_main_window(rt: Arc<tokio::runtime::Runtime>) -> bool {
                         w.set_daemon_status("running".into());
                     }
                 });
+
+                // Fetch storage quota once on connect
+                if let Ok(json) = proxy.get_storage().await {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) {
+                        if let (Some(used), Some(total)) = (
+                            v["used"].as_u64(),
+                            v["total"].as_u64(),
+                        ) {
+                            let ratio = if total > 0 { used as f32 / total as f32 } else { 0.0 };
+                            let ww = window_weak_bg.clone();
+                            let _ = slint::invoke_from_event_loop(move || {
+                                if let Some(w) = ww.upgrade() {
+                                    w.set_storage_used(human_size(used).into());
+                                    w.set_storage_total(human_size(total).into());
+                                    w.set_storage_ratio(ratio);
+                                }
+                            });
+                        }
+                    }
+                }
 
                 // File-open task (BUG-6: Rc created inside closure, on event loop thread)
                 let proxy2 = proxy.clone();

@@ -11,6 +11,8 @@ trait PDrive {
     async fn resume_sync(&self) -> zbus::Result<()>;
     async fn upload_file(&self, local_path: &str, remote_path: &str) -> zbus::Result<String>;
     async fn browse_directory(&self, remote_path: &str) -> zbus::Result<String>;
+    async fn download_file(&self, remote_path: &str) -> zbus::Result<String>;
+    async fn get_storage(&self) -> zbus::Result<String>;
 }
 
 pub async fn connect() -> anyhow::Result<PDriveProxy<'static>> {

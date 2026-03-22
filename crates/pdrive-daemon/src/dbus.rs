@@ -1,6 +1,6 @@
-use pdrive_core::{config::Config, drive::DriveClient};
+use pdrive_core::{auth::TokenStore, config::Config, drive::DriveClient};
 use proton_drive_sdk::node::NodeUid;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use zbus::interface;
 
@@ -8,19 +8,59 @@ use zbus::interface;
 pub const INTERFACE_NAME: &str = "org.protonmail.PDrive";
 pub const OBJECT_PATH: &str = "/org/protonmail/PDrive";
 
+/// Cache TTL for directory listings — avoids re-fetching on every back-navigation.
+const LISTING_TTL_SECS: u64 = 60;
+
 pub struct PDriveInterface {
     #[allow(dead_code)]
     config: Arc<Mutex<Config>>,
     drive: Arc<Mutex<Option<Arc<DriveClient>>>>,
     path_cache: Arc<Mutex<HashMap<String, NodeUid>>>,
+    /// listing_cache: path → (json_result, fetched_at)
+    listing_cache: Arc<Mutex<HashMap<String, (String, Instant)>>>,
+    token_store_path: PathBuf,
 }
 
 impl PDriveInterface {
-    pub fn new(config: Config, drive: Option<DriveClient>) -> Self {
+    pub fn new(config: Config, drive: Option<DriveClient>, token_store_path: PathBuf) -> Self {
         Self {
             config: Arc::new(Mutex::new(config)),
             drive: Arc::new(Mutex::new(drive.map(Arc::new))),
             path_cache: Arc::new(Mutex::new(HashMap::new())),
+            listing_cache: Arc::new(Mutex::new(HashMap::new())),
+            token_store_path,
+        }
+    }
+
+    /// Return the active DriveClient, lazy-loading from the token store if needed.
+    async fn get_or_load_drive(&self) -> Option<Arc<DriveClient>> {
+        {
+            let guard = self.drive.lock().await;
+            if guard.is_some() {
+                return guard.clone();
+            }
+        }
+        // No session in memory — try loading from the token store
+        let store = TokenStore::new(self.token_store_path.clone());
+        match (store.load_session().await, store.load_password().await) {
+            (Ok(Some(session)), Ok(Some(password))) => {
+                tracing::info!("lazy-loading session for {}", session.username);
+                match DriveClient::from_stored(&session, &password).await {
+                    Ok(client) => {
+                        let client = Arc::new(client);
+                        *self.drive.lock().await = Some(client.clone());
+                        Some(client)
+                    }
+                    Err(e) => {
+                        tracing::warn!("lazy-load session failed: {}", e);
+                        None
+                    }
+                }
+            }
+            _ => {
+                tracing::warn!("browse_directory: no session loaded");
+                None
+            }
         }
     }
 }
@@ -30,6 +70,22 @@ impl PDriveInterface {
     async fn get_status(&self) -> String {
         let guard = self.drive.lock().await;
         if guard.is_some() { "running".to_string() } else { "no-session".to_string() }
+    }
+
+    async fn get_storage(&self) -> String {
+        let drive = match self.get_or_load_drive().await {
+            Some(d) => d,
+            None => return r#"{"error":"no session"}"#.to_string(),
+        };
+        match drive.get_user_quota().await {
+            Ok((used, total)) => {
+                serde_json::json!({"used": used, "total": total}).to_string()
+            }
+            Err(e) => {
+                tracing::warn!("get_storage failed: {}", e);
+                r#"{"error":"unavailable"}"#.to_string()
+            }
+        }
     }
 
     async fn pause_sync(&self) {
@@ -46,15 +102,9 @@ impl PDriveInterface {
     }
 
     async fn download_file(&self, remote_path: String) -> String {
-        let drive = {
-            let guard = self.drive.lock().await;
-            match guard.as_ref() {
-                Some(d) => d.clone(),
-                None => {
-                    tracing::warn!("download_file: no session");
-                    return String::new();
-                }
-            }
+        let drive = match self.get_or_load_drive().await {
+            Some(d) => d,
+            None => return String::new(),
         };
 
         let node_uid = {
@@ -102,23 +152,26 @@ impl PDriveInterface {
     }
 
     async fn browse_directory(&self, remote_path: String) -> String {
-        let drive = {
-            let guard = self.drive.lock().await;
-            match guard.as_ref() {
-                Some(d) => d.clone(),
-                None => {
-                    tracing::warn!("browse_directory: no session loaded");
-                    return "[]".to_string();
+        // Return cached listing if still fresh
+        {
+            let cache = self.listing_cache.lock().await;
+            if let Some((json, fetched_at)) = cache.get(&remote_path) {
+                if fetched_at.elapsed().as_secs() < LISTING_TTL_SECS {
+                    tracing::debug!("browse_directory: cache hit for {}", remote_path);
+                    return json.clone();
                 }
             }
+        }
+
+        let drive = match self.get_or_load_drive().await {
+            Some(d) => d,
+            None => return "[]".to_string(),
         };
 
         let entries_and_uids = if remote_path == "/" || remote_path.is_empty() {
             match drive.list_root().await {
                 Ok((entries, root_uid)) => {
-                    let mut cache = self.path_cache.lock().await;
-                    cache.insert("/".to_string(), root_uid);
-                    drop(cache);
+                    self.path_cache.lock().await.insert("/".to_string(), root_uid);
                     entries
                 }
                 Err(e) => {
@@ -126,11 +179,16 @@ impl PDriveInterface {
                     return "[]".to_string();
                 }
             }
+        } else if remote_path == "/computers" || remote_path == "/sync" {
+            match drive.list_devices().await {
+                Ok(entries) => entries,
+                Err(e) => {
+                    tracing::warn!("list_devices failed: {}", e);
+                    return "[]".to_string();
+                }
+            }
         } else {
-            let uid = {
-                let cache = self.path_cache.lock().await;
-                cache.get(&remote_path).cloned()
-            };
+            let uid = self.path_cache.lock().await.get(&remote_path).cloned();
             match uid {
                 Some(uid) => match drive.list_folder(uid).await {
                     Ok(entries) => entries,
@@ -168,7 +226,9 @@ impl PDriveInterface {
             })
         }).collect();
 
-        serde_json::to_string(&json_entries).unwrap_or_else(|_| "[]".to_string())
+        let result = serde_json::to_string(&json_entries).unwrap_or_else(|_| "[]".to_string());
+        self.listing_cache.lock().await.insert(remote_path, (result.clone(), Instant::now()));
+        result
     }
 }
 
