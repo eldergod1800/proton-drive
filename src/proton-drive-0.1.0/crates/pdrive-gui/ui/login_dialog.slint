@@ -1,0 +1,56 @@
+import { Button, LineEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export component LoginDialog inherits Window {
+    title: "Sign in to Proton Drive";
+    preferred-width: 360px;
+
+    in-out property <string> error-text: "";
+    in-out property <bool>   busy: false;
+
+    callback login-requested(string /* username */, string /* password */);
+
+    VerticalBox {
+        padding: 24px;
+        spacing: 12px;
+
+        Text {
+            text: "Proton Drive";
+            font-size: 22px;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            text: "Sign in with your Proton account";
+            font-size: 13px;
+            color: #666666;
+            horizontal-alignment: center;
+        }
+
+        username-field := LineEdit {
+            placeholder-text: "Username or email";
+            enabled: !root.busy;
+        }
+
+        password-field := LineEdit {
+            placeholder-text: "Password";
+            input-type: password;
+            enabled: !root.busy;
+        }
+
+        if root.error-text != "": Text {
+            text: root.error-text;
+            color: #d32f2f;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+
+        Button {
+            text: root.busy ? "Signing in..." : "Sign in";
+            enabled: !root.busy;
+            clicked => {
+                root.login-requested(username-field.text, password-field.text);
+            }
+        }
+    }
+}

@@ -1,0 +1,16 @@
+[package]
+name = "pdrive-daemon"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "pdrive-daemon"
+path = "src/main.rs"
+
+[dependencies]
+pdrive-core = { path = "../pdrive-core" }
+tokio = { workspace = true }
+zbus = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

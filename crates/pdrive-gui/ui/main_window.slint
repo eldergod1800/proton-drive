@@ -1,5 +1,27 @@
-import { Button, ListView, LineEdit, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { Button, LineEdit, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 
+// ── Theme ─────────────────────────────────────────────────────────────────────
+global Theme {
+    in-out property <bool> dark: false;
+
+    out property <color> bg:           dark ? #1e1e2e : #ffffff;
+    out property <color> sidebar-bg:   dark ? #181825 : #f4f4f7;
+    out property <color> text:         dark ? #cdd6f4 : #1a1a2e;
+    out property <color> subtext:      dark ? #a6adc8 : #888888;
+    out property <color> divider:      dark ? #313244 : #e0e0e0;
+    out property <color> hover:        dark ? #45475a : #e8e8ee;
+    out property <color> active-bg:    dark ? #2a1f5e : #ede9ff;
+    out property <color> active-text:  dark ? #cba6f7 : #6d4aff;
+    out property <color> row-hover:    dark ? #1e1e3f : #f5f0ff;
+    out property <color> header-bg:    dark ? #181825 : #fafafa;
+    out property <color> statusbar-bg: dark ? #181825 : #f4f4f7;
+    out property <color> accent:       dark ? #cba6f7 : #6d4aff;
+    out property <color> accent-hover: dark ? #b08fe8 : #5a38e8;
+    out property <color> error-bg:     dark ? #3d1515 : #fff0f0;
+    out property <color> storage-bg:   dark ? #2a1f5e : #f0ecff;
+}
+
+// ── Data structs ──────────────────────────────────────────────────────────────
 export struct FileEntry {
     name: string,
     is-dir: bool,
@@ -12,16 +34,18 @@ export struct SidebarEntry {
     icon: string,
 }
 
+// ── Main window ───────────────────────────────────────────────────────────────
 export component MainWindow inherits Window {
     title: "Proton Drive";
     preferred-width: 1024px;
     preferred-height: 680px;
-    background: #ffffff;
+    background: Theme.bg;
 
-    in-out property <string> status-text: "Ready";
-    in-out property <string> daemon-status: "connecting...";
-    in-out property <int>    active-sidebar: 0;
-    in-out property <[FileEntry]> file-entries: [];
+    in-out property <string>       status-text: "Ready";
+    in-out property <string>       daemon-status: "connecting...";
+    in-out property <int>          active-sidebar: 0;
+    in-out property <[FileEntry]>  file-entries: [];
+    in-out property <string>       current-path: "/";
     in-out property <[SidebarEntry]> sidebar-entries: [
         { label: "My Files",     path: "/",          icon: "🗂" },
         { label: "Computers",    path: "/computers",  icon: "🖥" },
@@ -30,6 +54,10 @@ export component MainWindow inherits Window {
 
     callback browse-requested(string);
     callback upload-clicked();
+    callback logout-requested();
+    callback toggle-dark-mode();
+
+    toggle-dark-mode => { Theme.dark = !Theme.dark; }
 
     HorizontalBox {
         padding: 0;
@@ -37,49 +65,48 @@ export component MainWindow inherits Window {
 
         // ── Sidebar ───────────────────────────────────────────────────
         Rectangle {
-            width: 200px;
-            background: #f7f7f7;
+            width: 210px;
+            background: Theme.sidebar-bg;
 
             VerticalBox {
                 padding: 12px;
                 spacing: 2px;
 
-                // App header
+                // Logo
                 Rectangle {
-                    height: 48px;
+                    height: 52px;
                     HorizontalBox {
                         padding: 4px;
                         spacing: 8px;
                         alignment: start;
                         Text {
                             text: "⬡";
-                            font-size: 22px;
-                            color: #6d4aff;
+                            font-size: 24px;
+                            color: Theme.accent;
                             vertical-alignment: center;
                         }
                         Text {
                             text: "Proton Drive";
-                            font-size: 14px;
+                            font-size: 15px;
                             font-weight: 700;
-                            color: #1a1a2e;
+                            color: Theme.text;
                             vertical-alignment: center;
                         }
                     }
                 }
 
-                // Divider
-                Rectangle { height: 1px; background: #e0e0e0; }
-
+                Rectangle { height: 1px; background: Theme.divider; }
                 Rectangle { height: 8px; }
 
+                // Nav items
                 for entry[i] in root.sidebar-entries: Rectangle {
-                    height: 40px;
+                    height: 42px;
                     border-radius: 8px;
                     background: root.active-sidebar == i
-                        ? #ede9ff
-                        : (touch.has-hover ? #eeeeee : transparent);
+                        ? Theme.active-bg
+                        : (nav-touch.has-hover ? Theme.hover : transparent);
 
-                    touch := TouchArea {
+                    nav-touch := TouchArea {
                         clicked => {
                             root.active-sidebar = i;
                             root.browse-requested(entry.path);
@@ -91,17 +118,16 @@ export component MainWindow inherits Window {
                         padding-right: 8px;
                         spacing: 10px;
                         alignment: start;
-
                         Text {
                             text: entry.icon;
-                            font-size: 15px;
-                            color: root.active-sidebar == i ? #6d4aff : #444444;
+                            font-size: 16px;
+                            color: root.active-sidebar == i ? Theme.active-text : Theme.subtext;
                             vertical-alignment: center;
                         }
                         Text {
                             text: entry.label;
                             font-size: 13px;
-                            color: root.active-sidebar == i ? #6d4aff : #222222;
+                            color: root.active-sidebar == i ? Theme.active-text : Theme.text;
                             font-weight: root.active-sidebar == i ? 600 : 400;
                             vertical-alignment: center;
                         }
@@ -111,26 +137,63 @@ export component MainWindow inherits Window {
                 // Spacer
                 Rectangle { vertical-stretch: 1; }
 
-                // Storage hint
-                Rectangle {
-                    height: 52px;
-                    border-radius: 8px;
-                    background: #f0ecff;
+                Rectangle { height: 1px; background: Theme.divider; }
+                Rectangle { height: 8px; }
 
-                    VerticalBox {
-                        padding: 8px;
-                        spacing: 2px;
+                // Dark mode toggle
+                Rectangle {
+                    height: 38px;
+                    border-radius: 8px;
+                    background: dm-touch.has-hover ? Theme.hover : transparent;
+
+                    dm-touch := TouchArea {
+                        clicked => { root.toggle-dark-mode(); }
+                    }
+
+                    HorizontalBox {
+                        padding-left: 12px;
+                        spacing: 10px;
+                        alignment: start;
                         Text {
-                            text: "Storage";
-                            font-size: 11px;
-                            color: #6d4aff;
-                            font-weight: 600;
+                            text: Theme.dark ? "☀" : "🌙";
+                            font-size: 16px;
+                            color: Theme.subtext;
+                            vertical-alignment: center;
                         }
                         Text {
-                            text: "Connect daemon to see usage";
-                            font-size: 10px;
-                            color: #888888;
-                            wrap: word-wrap;
+                            text: Theme.dark ? "Light mode" : "Dark mode";
+                            font-size: 13px;
+                            color: Theme.text;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // Sign out
+                Rectangle {
+                    height: 38px;
+                    border-radius: 8px;
+                    background: so-touch.has-hover ? Theme.hover : transparent;
+
+                    so-touch := TouchArea {
+                        clicked => { root.logout-requested(); }
+                    }
+
+                    HorizontalBox {
+                        padding-left: 12px;
+                        spacing: 10px;
+                        alignment: start;
+                        Text {
+                            text: "🚪";
+                            font-size: 16px;
+                            color: Theme.subtext;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: "Sign out";
+                            font-size: 13px;
+                            color: Theme.text;
+                            vertical-alignment: center;
                         }
                     }
                 }
@@ -138,7 +201,7 @@ export component MainWindow inherits Window {
         }
 
         // Sidebar divider
-        Rectangle { width: 1px; background: #e0e0e0; }
+        Rectangle { width: 1px; background: Theme.divider; }
 
         // ── Main panel ────────────────────────────────────────────────
         VerticalBox {
@@ -148,7 +211,7 @@ export component MainWindow inherits Window {
             // Toolbar
             Rectangle {
                 height: 56px;
-                background: #ffffff;
+                background: Theme.bg;
 
                 HorizontalBox {
                     padding-left: 16px;
@@ -158,18 +221,23 @@ export component MainWindow inherits Window {
                     spacing: 10px;
                     alignment: stretch;
 
-                    LineEdit {
-                        placeholder-text: "Search files...";
+                    // Current path breadcrumb
+                    Text {
+                        text: root.current-path;
+                        font-size: 13px;
+                        color: Theme.subtext;
+                        vertical-alignment: center;
                         horizontal-stretch: 1;
                     }
 
+                    // Upload button
                     Rectangle {
-                        width: 96px;
+                        width: 100px;
                         height: 36px;
                         border-radius: 8px;
-                        background: upload-touch.has-hover ? #5a38e8 : #6d4aff;
+                        background: ul-touch.has-hover ? Theme.accent-hover : Theme.accent;
 
-                        upload-touch := TouchArea {
+                        ul-touch := TouchArea {
                             clicked => { root.upload-clicked(); }
                         }
 
@@ -186,24 +254,23 @@ export component MainWindow inherits Window {
             }
 
             // Toolbar divider
-            Rectangle { height: 1px; background: #eeeeee; }
+            Rectangle { height: 1px; background: Theme.divider; }
 
             // Column headers
             Rectangle {
                 height: 32px;
-                background: #fafafa;
+                background: Theme.header-bg;
 
                 HorizontalBox {
                     padding-left: 16px;
                     padding-right: 16px;
                     spacing: 0;
                     alignment: stretch;
-
                     Text {
                         text: "Name";
                         font-size: 11px;
                         font-weight: 600;
-                        color: #888888;
+                        color: Theme.subtext;
                         horizontal-stretch: 1;
                         vertical-alignment: center;
                     }
@@ -211,33 +278,33 @@ export component MainWindow inherits Window {
                         text: "Size";
                         font-size: 11px;
                         font-weight: 600;
-                        color: #888888;
-                        width: 80px;
+                        color: Theme.subtext;
+                        width: 90px;
                         horizontal-alignment: right;
                         vertical-alignment: center;
                     }
                 }
             }
 
-            Rectangle { height: 1px; background: #eeeeee; }
+            Rectangle { height: 1px; background: Theme.divider; }
 
             // Empty state
             if root.file-entries.length == 0: Rectangle {
                 vertical-stretch: 1;
-                background: #ffffff;
+                background: Theme.bg;
 
                 VerticalBox {
                     alignment: center;
-                    spacing: 8px;
+                    spacing: 10px;
                     Text {
                         text: "🗂";
-                        font-size: 48px;
+                        font-size: 52px;
                         horizontal-alignment: center;
                     }
                     Text {
                         text: "Select a folder from the sidebar";
                         font-size: 14px;
-                        color: #999999;
+                        color: Theme.subtext;
                         horizontal-alignment: center;
                     }
                 }
@@ -252,8 +319,8 @@ export component MainWindow inherits Window {
                     spacing: 0;
 
                     for entry in root.file-entries: Rectangle {
-                        height: 40px;
-                        background: row-touch.has-hover ? #f5f0ff : #ffffff;
+                        height: 42px;
+                        background: row-touch.has-hover ? Theme.row-hover : Theme.bg;
 
                         row-touch := TouchArea {}
 
@@ -262,29 +329,27 @@ export component MainWindow inherits Window {
                             padding-right: 16px;
                             spacing: 0;
                             alignment: stretch;
-
                             Text {
                                 text: (entry.is-dir ? "📁  " : "📄  ") + entry.name;
                                 font-size: 13px;
-                                color: #1a1a1a;
+                                color: Theme.text;
                                 horizontal-stretch: 1;
                                 vertical-alignment: center;
                             }
                             Text {
                                 text: entry.size;
                                 font-size: 12px;
-                                color: #888888;
-                                width: 80px;
+                                color: Theme.subtext;
+                                width: 90px;
                                 horizontal-alignment: right;
                                 vertical-alignment: center;
                             }
                         }
 
-                        // Row divider
                         Rectangle {
                             y: parent.height - 1px;
                             height: 1px;
-                            background: #f0f0f0;
+                            background: Theme.divider;
                         }
                     }
                 }
@@ -293,22 +358,20 @@ export component MainWindow inherits Window {
             // Status bar
             Rectangle {
                 height: 30px;
-                background: #f7f7f7;
+                background: Theme.statusbar-bg;
 
                 HorizontalBox {
                     padding-left: 16px;
                     padding-right: 16px;
                     spacing: 8px;
                     alignment: stretch;
-
                     Text {
                         text: root.status-text;
                         font-size: 11px;
-                        color: #666666;
+                        color: Theme.subtext;
                         horizontal-stretch: 1;
                         vertical-alignment: center;
                     }
-
                     Rectangle {
                         width: 8px;
                         height: 8px;
@@ -316,11 +379,10 @@ export component MainWindow inherits Window {
                         border-radius: 4px;
                         background: root.daemon-status == "running" ? #22c55e : #aaaaaa;
                     }
-
                     Text {
                         text: "daemon: " + root.daemon-status;
                         font-size: 11px;
-                        color: root.daemon-status == "running" ? #22c55e : #aaaaaa;
+                        color: root.daemon-status == "running" ? #22c55e : Theme.subtext;
                         vertical-alignment: center;
                     }
                 }

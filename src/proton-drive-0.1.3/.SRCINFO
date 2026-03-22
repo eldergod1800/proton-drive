@@ -1,0 +1,14 @@
+pkgbase = proton-drive
+	pkgdesc = Proton Drive desktop client for KDE Plasma
+	pkgver = 0.1.2
+	pkgrel = 1
+	url = https://github.com/eldergod1800/proton-drive
+	arch = x86_64
+	license = GPL-3.0-or-later
+	makedepends = rust
+	makedepends = cargo
+	depends = dbus
+	source = proton-drive-0.1.2.tar.gz::https://github.com/eldergod1800/proton-drive/archive/v0.1.2.tar.gz
+	sha256sums = bf061721078a71a38d24c33776bb2280ad19076ac0b2054687d6d6abaa3755e0
+
+pkgname = proton-drive

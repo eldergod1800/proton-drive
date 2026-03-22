@@ -65,7 +65,24 @@ impl PDriveInterface {
 
     async fn browse_directory(&self, remote_path: String) -> String {
         tracing::info!("browse requested: {}", remote_path);
-        // TODO: call drive client and return JSON array of entries
-        "[]".to_string()
+        // Stub data — replace with real DriveClient::list() call
+        let entries = match remote_path.as_str() {
+            "/computers" => r#"[
+                {"name":"This PC","is_dir":true,"size":"--"},
+                {"name":"Work Laptop","is_dir":true,"size":"--"}
+            ]"#,
+            "/sync" => r#"[
+                {"name":"Documents","is_dir":true,"size":"1.2 GB"},
+                {"name":"Photos","is_dir":true,"size":"4.8 GB"}
+            ]"#,
+            _ => r#"[
+                {"name":"Documents","is_dir":true,"size":"1.2 GB"},
+                {"name":"Photos","is_dir":true,"size":"4.8 GB"},
+                {"name":"Music","is_dir":true,"size":"820 MB"},
+                {"name":"notes.txt","is_dir":false,"size":"4.2 KB"},
+                {"name":"report.pdf","is_dir":false,"size":"1.1 MB"}
+            ]"#,
+        };
+        entries.to_string()
     }
 }

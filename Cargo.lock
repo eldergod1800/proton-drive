@@ -3906,6 +3906,8 @@ dependencies = [
  "anyhow",
  "ksni",
  "pdrive-core",
+ "serde",
+ "serde_json",
  "slint",
  "slint-build",
  "tokio",

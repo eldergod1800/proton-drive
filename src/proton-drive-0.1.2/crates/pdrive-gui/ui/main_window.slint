@@ -1,0 +1,157 @@
+import { Button, ListView, LineEdit, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export struct FileEntry {
+    name: string,
+    is-dir: bool,
+    size: string,
+}
+
+export struct SidebarEntry {
+    label: string,
+    path: string,
+}
+
+export component MainWindow inherits Window {
+    title: "Proton Drive";
+    preferred-width: 1000px;
+    preferred-height: 650px;
+
+    in-out property <string> status-text: "Ready";
+    in-out property <string> daemon-status: "connecting...";
+    in-out property <[FileEntry]> file-entries: [];
+    in-out property <[SidebarEntry]> sidebar-entries: [
+        { label: "My Files", path: "/" },
+        { label: "Computers", path: "/computers" },
+        { label: "Sync Folders", path: "/sync" },
+    ];
+
+    callback browse-requested(string);
+    callback upload-clicked();
+
+    HorizontalBox {
+        padding: 0;
+        spacing: 0;
+
+        // Left sidebar
+        Rectangle {
+            width: 200px;
+            background: #f5f5f5;
+            border-width: 0;
+
+            VerticalBox {
+                padding: 8px;
+                spacing: 2px;
+
+                for entry[i] in root.sidebar-entries: Rectangle {
+                    height: 36px;
+                    border-radius: 4px;
+                    background: touch.has-hover ? #e0e0e0 : transparent;
+
+                    touch := TouchArea {
+                        clicked => { root.browse-requested(entry.path); }
+                    }
+
+                    Text {
+                        x: 12px;
+                        y: (parent.height - self.height) / 2;
+                        text: entry.label;
+                        font-size: 13px;
+                    }
+                }
+            }
+        }
+
+        // Divider
+        Rectangle { width: 1px; background: #dddddd; }
+
+        // Right panel
+        VerticalBox {
+            padding: 0;
+            spacing: 0;
+
+            // Toolbar
+            Rectangle {
+                height: 48px;
+                background: #fafafa;
+                border-width: 0;
+
+                HorizontalBox {
+                    padding: 8px;
+                    spacing: 8px;
+                    alignment: stretch;
+
+                    LineEdit {
+                        placeholder-text: "Search...";
+                        horizontal-stretch: 1;
+                    }
+
+                    Button {
+                        text: "Upload";
+                        clicked => { root.upload-clicked(); }
+                    }
+                }
+            }
+
+            // Divider
+            Rectangle { height: 1px; background: #eeeeee; }
+
+            // File list
+            if root.file-entries.length == 0: Rectangle {
+                vertical-stretch: 1;
+                Text {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    text: "Select a folder to browse";
+                    color: #999999;
+                    font-size: 13px;
+                }
+            }
+
+            if root.file-entries.length > 0: ScrollView {
+                vertical-stretch: 1;
+                VerticalBox {
+                    padding: 0;
+                    spacing: 0;
+                    for entry in root.file-entries: Rectangle {
+                        height: 32px;
+                        background: touch2.has-hover ? #f0f0f0 : transparent;
+                        touch2 := TouchArea {}
+                        HorizontalBox {
+                            padding: 8px;
+                            Text {
+                                text: entry.is-dir ? "📁 " + entry.name : "📄 " + entry.name;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Status bar
+            Rectangle {
+                height: 28px;
+                background: #f0f0f0;
+
+                HorizontalBox {
+                    padding: 6px;
+                    spacing: 8px;
+
+                    Text {
+                        text: root.status-text;
+                        font-size: 11px;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: "daemon: " + root.daemon-status;
+                        font-size: 11px;
+                        color: root.daemon-status == "running" ? #4caf50 : #999999;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}

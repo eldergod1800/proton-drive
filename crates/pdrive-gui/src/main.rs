@@ -4,12 +4,22 @@ mod dbus_client;
 mod tray;
 
 use tray::PdriveTray;
-
 use pdrive_core::{auth::TokenStore, drive::DriveClient};
+
+#[derive(serde::Deserialize)]
+struct BrowseEntry {
+    name: String,
+    is_dir: bool,
+    size: String,
+}
 
 fn main() {
     tracing_subscriber::fmt::init();
 
+    show_login_or_main();
+}
+
+fn show_login_or_main() {
     let token_store = TokenStore::new(TokenStore::default_path());
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -20,7 +30,10 @@ fn main() {
     });
 
     if has_session {
-        run_main_window();
+        let logged_out = run_main_window();
+        if logged_out {
+            show_login_or_main();
+        }
         return;
     }
 
@@ -69,14 +82,19 @@ fn main() {
     dialog.run().expect("dialog run");
 
     if main_shown.get() {
-        run_main_window();
+        let logged_out = run_main_window();
+        if logged_out {
+            show_login_or_main();
+        }
     }
 }
 
-fn run_main_window() {
+/// Returns true if the user signed out (so caller can show login again).
+fn run_main_window() -> bool {
     let window = MainWindow::new().expect("main window");
+    let logged_out = std::rc::Rc::new(std::cell::Cell::new(false));
 
-    // Spawn tray icon in a background thread
+    // Tray icon
     let window_weak_tray = window.as_weak();
     std::thread::spawn(move || {
         let service = ksni::TrayService::new(PdriveTray {
@@ -88,8 +106,8 @@ fn run_main_window() {
                     }
                 });
             }),
-            on_pause: Box::new(|| tracing::info!("pause sync requested from tray")),
-            on_resume: Box::new(|| tracing::info!("resume sync requested from tray")),
+            on_pause: Box::new(|| tracing::info!("pause sync")),
+            on_resume: Box::new(|| tracing::info!("resume sync")),
             on_quit: Box::new(|| {
                 let _ = slint::invoke_from_event_loop(|| slint::quit_event_loop().unwrap());
             }),
@@ -97,7 +115,7 @@ fn run_main_window() {
         service.run().ok();
     });
 
-    // Intercept window close: minimize to tray instead of quitting
+    // Minimize to tray on close
     let window_weak_close = window.as_weak();
     window.window().on_close_requested(move || {
         if let Some(w) = window_weak_close.upgrade() {
@@ -106,6 +124,7 @@ fn run_main_window() {
         slint::CloseRequestResponse::KeepWindowShown
     });
 
+    // Browse channel: GUI sends path → background thread calls daemon → result back to GUI
     let (browse_tx, mut browse_rx) = tokio::sync::mpsc::channel::<String>(16);
 
     let window_weak_bg = window.as_weak();
@@ -121,9 +140,30 @@ fn run_main_window() {
                             w.set_daemon_status("running".into());
                         }
                     });
+
                     while let Some(path) = browse_rx.recv().await {
                         match proxy.browse_directory(&path).await {
-                            Ok(json) => tracing::info!("browse result: {}", json),
+                            Ok(json) => {
+                                let entries: Vec<BrowseEntry> =
+                                    serde_json::from_str(&json).unwrap_or_default();
+                                let ww = window_weak_bg.clone();
+                                let _ = slint::invoke_from_event_loop(move || {
+                                    if let Some(w) = ww.upgrade() {
+                                        let items: Vec<FileEntry> = entries
+                                            .iter()
+                                            .map(|e| FileEntry {
+                                                name: e.name.clone().into(),
+                                                is_dir: e.is_dir,
+                                                size: e.size.clone().into(),
+                                            })
+                                            .collect();
+                                        let model = std::rc::Rc::new(
+                                            slint::VecModel::from(items),
+                                        );
+                                        w.set_file_entries(model.into());
+                                    }
+                                });
+                            }
                             Err(e) => tracing::warn!("browse failed: {}", e),
                         }
                     }
@@ -142,12 +182,14 @@ fn run_main_window() {
         });
     });
 
+    // Sidebar browse
     let window_weak = window.as_weak();
     window.on_browse_requested(move |path| {
-        tracing::info!("browse requested: {}", path);
+        tracing::info!("browse: {}", path);
         let _ = browse_tx.try_send(path.to_string());
         if let Some(w) = window_weak.upgrade() {
-            w.set_status_text(format!("Browsing: {}", path).into());
+            w.set_current_path(path.clone());
+            w.set_status_text(format!("Loading {}...", path).into());
         }
     });
 
@@ -155,5 +197,15 @@ fn run_main_window() {
         tracing::info!("upload clicked");
     });
 
+    // Logout
+    let logged_out_clone = logged_out.clone();
+    window.on_logout_requested(move || {
+        let store = TokenStore::new(TokenStore::default_path());
+        let _ = store.clear();
+        logged_out_clone.set(true);
+        let _ = slint::invoke_from_event_loop(|| slint::quit_event_loop().unwrap());
+    });
+
     window.run().expect("main window run");
+    logged_out.get()
 }
