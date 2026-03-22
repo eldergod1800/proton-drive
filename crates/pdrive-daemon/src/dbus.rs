@@ -1,16 +1,17 @@
-use pdrive_core::{config::Config, drive::{DriveClient, DriveEntry}};
+use pdrive_core::{config::Config, drive::DriveClient};
 use proton_drive_sdk::node::NodeUid;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use zbus::interface;
 
+#[allow(dead_code)]
 pub const INTERFACE_NAME: &str = "org.protonmail.PDrive";
 pub const OBJECT_PATH: &str = "/org/protonmail/PDrive";
 
 pub struct PDriveInterface {
     #[allow(dead_code)]
     config: Arc<Mutex<Config>>,
-    drive: Arc<Mutex<Option<DriveClient>>>,
+    drive: Arc<Mutex<Option<Arc<DriveClient>>>>,
     path_cache: Arc<Mutex<HashMap<String, NodeUid>>>,
 }
 
@@ -18,7 +19,7 @@ impl PDriveInterface {
     pub fn new(config: Config, drive: Option<DriveClient>) -> Self {
         Self {
             config: Arc::new(Mutex::new(config)),
-            drive: Arc::new(Mutex::new(drive)),
+            drive: Arc::new(Mutex::new(drive.map(Arc::new))),
             path_cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -45,12 +46,14 @@ impl PDriveInterface {
     }
 
     async fn download_file(&self, remote_path: String) -> String {
-        let drive_guard = self.drive.lock().await;
-        let drive = match drive_guard.as_ref() {
-            Some(d) => d,
-            None => {
-                tracing::warn!("download_file: no session");
-                return String::new();
+        let drive = {
+            let guard = self.drive.lock().await;
+            match guard.as_ref() {
+                Some(d) => d.clone(),
+                None => {
+                    tracing::warn!("download_file: no session");
+                    return String::new();
+                }
             }
         };
 
@@ -77,7 +80,8 @@ impl PDriveInterface {
         let cache_dir = dirs::cache_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
             .join("pdrive");
-        if std::fs::create_dir_all(&cache_dir).is_err() {
+        if let Err(e) = std::fs::create_dir_all(&cache_dir) {
+            tracing::warn!("download_file: could not create cache dir {:?}: {}", cache_dir, e);
             return String::new();
         }
         let dest = cache_dir.join(&raw);
@@ -98,18 +102,25 @@ impl PDriveInterface {
     }
 
     async fn browse_directory(&self, remote_path: String) -> String {
-        let drive_guard = self.drive.lock().await;
-        let drive = match drive_guard.as_ref() {
-            Some(d) => d,
-            None => {
-                tracing::warn!("browse_directory: no session loaded");
-                return "[]".to_string();
+        let drive = {
+            let guard = self.drive.lock().await;
+            match guard.as_ref() {
+                Some(d) => d.clone(),
+                None => {
+                    tracing::warn!("browse_directory: no session loaded");
+                    return "[]".to_string();
+                }
             }
         };
 
         let entries_and_uids = if remote_path == "/" || remote_path.is_empty() {
             match drive.list_root().await {
-                Ok((entries, _root_uid)) => entries,
+                Ok((entries, root_uid)) => {
+                    let mut cache = self.path_cache.lock().await;
+                    cache.insert("/".to_string(), root_uid);
+                    drop(cache);
+                    entries
+                }
                 Err(e) => {
                     tracing::warn!("browse_directory root failed: {}", e);
                     return "[]".to_string();
