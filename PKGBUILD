@@ -9,7 +9,7 @@ license=('GPL-3.0-or-later')
 depends=('dbus')
 makedepends=('rust' 'cargo')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('b11eb660700851816b381c1d052420c252d411304846e0da907e3c382a18f9ca')
+sha256sums=('cf58b9b12f0edf3c1cd8e4aa9defe1ee79593deb99bd9128b915bf15a3bf57a4')
 
 prepare() {
     cd "$pkgname-$pkgver"
