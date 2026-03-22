@@ -137,12 +137,13 @@ fn node_to_entry_and_uid(node: Node) -> Option<(DriveEntry, NodeUid)> {
                     name: f.base.name.clone(),
                     is_dir: true,
                     size: None,
-                    modified: Some(f.base.creation_time.timestamp()),
+                    modified: None,
                 },
                 uid,
             ))
         }
-        Node::File(f) | Node::Photo(f) => {
+        Node::Photo(_) => None,
+        Node::File(f) => {
             let uid = f.base.base.uid.clone();
             let size = u64::try_from(f.total_size_on_cloud_storage).ok();
             Some((
@@ -151,7 +152,7 @@ fn node_to_entry_and_uid(node: Node) -> Option<(DriveEntry, NodeUid)> {
                     name: f.base.base.name.clone(),
                     is_dir: false,
                     size,
-                    modified: Some(f.base.base.creation_time.timestamp()),
+                    modified: None,
                 },
                 uid,
             ))
