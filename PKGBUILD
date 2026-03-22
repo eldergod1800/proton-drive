@@ -1,6 +1,6 @@
 # Maintainer: eldergod1800
 pkgname=proton-drive
-pkgver=0.1.2
+pkgver=0.1.3
 pkgrel=1
 pkgdesc="Proton Drive desktop client for KDE Plasma"
 arch=('x86_64')
@@ -9,7 +9,7 @@ license=('GPL-3.0-or-later')
 depends=('dbus')
 makedepends=('rust' 'cargo')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('bf061721078a71a38d24c33776bb2280ad19076ac0b2054687d6d6abaa3755e0')
+sha256sums=('72074a51601aab97299ae2698d1128d6881fb262207b17b69d849e6507062fed')
 
 prepare() {
     cd "$pkgname-$pkgver"
