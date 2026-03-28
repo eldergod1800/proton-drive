@@ -1,15 +1,7 @@
 import sys
 import os
 
-# Open log file FIRST — before anything else can fail
-LOG_PATH = "/tmp/pdrive-captcha-debug.log"
-try:
-    _log = open(LOG_PATH, "w", buffering=1)
-except Exception:
-    _log = sys.stderr
-
 def log(msg):
-    print(msg, file=_log, flush=True)
     print(msg, file=sys.stderr, flush=True)
 
 log(f"captcha_webview.py starting, python={sys.executable}")
@@ -82,7 +74,7 @@ def on_message(manager, js_result):
 
     token = find_final_token(data) if isinstance(data, dict) else None
     if token:
-        log(f"TOKEN FOUND: type={data.get('type')!r} token={token!r}")
+        log(f"TOKEN FOUND: type={data.get('type')!r}")
         def emit_and_quit():
             print(token, flush=True)
             log("emitted token to stdout, quitting")

@@ -254,15 +254,6 @@ fn show_login_or_main(rt: Arc<tokio::runtime::Runtime>) {
                                 .copied()
                                 .unwrap_or("python3");
                                 tracing::info!("captcha_webview: using python={}", python_bin);
-                                // Write a Rust-side diagnostic log so failures are visible
-                                // even when pdrive is not started from a terminal.
-                                let rust_log_path = std::env::var("HOME")
-                                    .map(|h| format!("{}/pdrive-captcha-rust.log", h))
-                                    .unwrap_or_else(|_| "/tmp/pdrive-captcha-rust.log".into());
-                                let _ = std::fs::write(&rust_log_path, format!(
-                                    "python_bin={python_bin}\nurl={url}\nhv_token_len={}\n",
-                                    hv_token.len()
-                                ));
                                 match tokio::process::Command::new(python_bin)
                                     .arg("-c").arg(script)
                                     .arg(&url)
@@ -274,19 +265,12 @@ fn show_login_or_main(rt: Arc<tokio::runtime::Runtime>) {
                                         for line in stderr_str.lines() {
                                             tracing::info!("captcha_webview: {}", line);
                                         }
-                                        let _ = std::fs::write(&rust_log_path, format!(
-                                            "python_bin={python_bin}\nexit={:?}\nstdout_bytes={}\nstderr=\n{}",
-                                            output.status.code(),
-                                            output.stdout.len(),
-                                            stderr_str,
-                                        ));
                                         // Python emits one line: the combined token from pm_captcha/HUMAN_VERIFICATION_SUCCESS
                                         // Format: <HV_TOKEN>:<signature><captcha_hex>
                                         let token = String::from_utf8_lossy(&output.stdout)
                                             .lines()
                                             .find(|l| !l.trim().is_empty())
                                             .map(|l| l.trim().to_string());
-                                        tracing::info!("captcha combined token: {:?}", token);
                                         if let Some(token) = token {
                                             DriveClient::login_complete_with_captcha(
                                                 pending, &password, &token,
@@ -296,9 +280,6 @@ fn show_login_or_main(rt: Arc<tokio::runtime::Runtime>) {
                                         }
                                     }
                                     Err(e) => {
-                                        let _ = std::fs::write(&rust_log_path, format!(
-                                            "python_bin={python_bin}\nspawn_error={e}\n"
-                                        ));
                                         tracing::warn!("python3 captcha webview failed: {}", e);
                                         Err(anyhow::anyhow!(
                                             "Could not open verification window. Use \"Open Verification Page\" below."
@@ -626,11 +607,16 @@ fn run_main_window(rt: Arc<tokio::runtime::Runtime>, drive: Option<Arc<DriveClie
                         tracing::warn!("download: could not create cache dir: {}", e);
                         continue;
                     }
+                    // Canonicalize after creation so symlinks in the path are resolved
+                    // before we build the destination, preventing TOCTOU path traversal.
+                    let cache_dir = match std::fs::canonicalize(&cache_dir) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            tracing::warn!("download: could not canonicalize cache dir: {}", e);
+                            continue;
+                        }
+                    };
                     let dest = cache_dir.join(&safe_name);
-                    if !dest.is_absolute() || !dest.starts_with(&cache_dir) {
-                        tracing::warn!("download: blocked unsafe path");
-                        continue;
-                    }
 
                     if let Some(ref d) = drive_open {
                         let name_dl = name.clone();

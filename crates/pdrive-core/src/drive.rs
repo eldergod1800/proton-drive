@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use futures::StreamExt;
+use zeroize::Zeroizing;
 use proton_drive_sdk::{
     client::ProtonDriveClient,
     node::{Node, NodeUid},
@@ -22,7 +23,7 @@ use crate::auth::StoredSession;
 /// account has TOTP 2FA enabled.  Pass the session + password to `login_complete_with_2fa()`.
 pub struct TwoFactorRequired {
     pub session: ProtonAPISession,
-    pub password: String,
+    pub password: Zeroizing<String>,
 }
 
 impl std::fmt::Debug for TwoFactorRequired {
@@ -78,7 +79,6 @@ impl DriveClient {
         if username.is_empty() {
             anyhow::bail!("username is empty — please enter your email or username");
         }
-        tracing::info!("attempting login for username: {}", username);
         let options = ProtonSessionOptions::new(ProtonClientOptions {
             app_version_override: Some("web-drive@5.0.16".to_string()),
             ..Default::default()
@@ -90,7 +90,7 @@ impl DriveClient {
                 if session.is_waiting_for_second_factor_code {
                     return Err(TwoFactorRequired {
                         session,
-                        password: password.to_string(),
+                        password: Zeroizing::new(password.to_string()),
                     }.into());
                 }
                 let mut session = session;
@@ -118,7 +118,7 @@ impl DriveClient {
         if session.is_waiting_for_second_factor_code {
             return Err(TwoFactorRequired {
                 session,
-                password: password.to_string(),
+                password: Zeroizing::new(password.to_string()),
             }.into());
         }
         let mut session = session;
@@ -327,9 +327,8 @@ impl DriveClient {
             .send()
             .await?;
         let raw = resp.text().await?;
-        tracing::debug!("get_user_quota raw response: {}", &raw[..raw.len().min(500)]);
         let body: UserResp = serde_json::from_str(&raw)
-            .map_err(|e| anyhow::anyhow!("get_user_quota deserialize: {}: body={}", e, &raw[..raw.len().min(400)]))?;
+            .map_err(|e| anyhow::anyhow!("get_user_quota deserialize failed: {}", e))?;
         Ok((body.user.used_space, body.user.max_space))
     }
 }
