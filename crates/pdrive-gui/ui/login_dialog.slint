@@ -3,7 +3,7 @@ import { VerticalBox, HorizontalBox } from "std-widgets.slint";
 export component LoginDialog inherits Window {
     title: "Proton Drive";
     preferred-width: 400px;
-    preferred-height: 460px;
+    preferred-height: 580px;
 
     in-out property <bool>   dark-mode: false;
     in-out property <string> error-text: "";
@@ -196,64 +196,20 @@ export component LoginDialog inherits Window {
                 padding: 0;
 
                 Rectangle {
-                    height: 48px;
+                    height: 44px;
                     border-radius: 6px;
                     background: root.c-info-bg;
                     Text {
                         x: 10px;
                         width: parent.width - 20px;
                         y: (parent.height - self.height) / 2;
-                        text: root.verification-label;
+                        text: "Verification window opened — complete the captcha to continue.";
                         color: root.c-info-text;
                         font-size: 11px;
                         wrap: word-wrap;
                     }
                 }
 
-                Rectangle { height: 8px; }
-
-                Rectangle {
-                    height: 36px;
-                    border-radius: 8px;
-                    background: root.busy ? root.c-accent-dim : (captcha-touch.has-hover ? root.c-accent-h : root.c-accent);
-                    captcha-touch := TouchArea {
-                        enabled: !root.busy;
-                        clicked => { root.open-captcha-page-requested(); }
-                    }
-                    Text {
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        text: "Open Verification Page";
-                        color: #ffffff;
-                        font-size: 12px;
-                        font-weight: 600;
-                    }
-                }
-
-                Rectangle { height: 6px; }
-
-                Text {
-                    text: "Or copy URL to a private browser window:";
-                    font-size: 10px;
-                    color: root.c-subtext;
-                    wrap: word-wrap;
-                }
-                Rectangle { height: 4px; }
-                Rectangle {
-                    height: 30px;
-                    border-radius: 6px;
-                    border-width: 1px;
-                    border-color: root.c-input-border;
-                    background: root.c-input-bg;
-                    TextInput {
-                        x: 8px;
-                        width: parent.width - 16px;
-                        y: (parent.height - self.height) / 2;
-                        text: root.captcha-url;
-                        color: root.c-subtext;
-                        font-size: 10px;
-                    }
-                }
                 Rectangle { height: 8px; }
             }
 
