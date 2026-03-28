@@ -5,7 +5,9 @@
 
 A native Linux desktop client for [Proton Drive](https://proton.me/drive), built for KDE Plasma. Provides a file browser, dark/light mode, tray icon, and file download — all communicating directly with the Proton Drive API using end-to-end encrypted sessions.
 
-![Screenshot](Screenshot_20260328_085227.png)
+| Login | Drive |
+|-------|-------|
+| ![Login screen](login.png) | ![Drive browser](drive.png) |
 
 ---
 
