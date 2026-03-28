@@ -7,20 +7,24 @@ arch=('x86_64')
 url="https://github.com/eldergod1800/proton-drive"
 license=('GPL-3.0-or-later')
 depends=('dbus' 'python-gobject' 'webkit2gtk-4.1')
-makedepends=('rust' 'cargo')
+makedepends=('rust' 'cargo' 'cmake' 'clang')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
 sha256sums=('d68a318cf3c74ebe5e5922c691115b536a90921be4febd69c4f2c000abbb504c')
 
 prepare() {
     cd "$pkgname-$pkgver"
-    cargo fetch --target "$CARCH-unknown-linux-gnu"
+    cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
 }
 
 build() {
     cd "$pkgname-$pkgver"
     export RUSTUP_TOOLCHAIN=stable
     export CARGO_TARGET_DIR=target
-    cargo build --release --bin pdrive --bin pdrive-daemon
+    # Arch system LDFLAGS conflict with aws-lc-sys static linking
+    unset LDFLAGS
+    export CC=clang
+    export CXX=clang++
+    cargo build --release --locked --bin pdrive --bin pdrive-daemon
 }
 
 check() {
