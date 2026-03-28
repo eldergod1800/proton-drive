@@ -5,7 +5,12 @@ use zbus::connection;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,pgp=error"))
+        )
+        .init();
     tracing::info!("pdrive-daemon starting");
 
     let config = Config::load()?;

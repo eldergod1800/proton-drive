@@ -4069,6 +4069,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "matchers"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
+dependencies = [
+ "regex-automata",
+]
+
+[[package]]
 name = "maybe-rayon"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5069,7 +5078,7 @@ checksum = "35fb2e5f958ec131621fdd531e9fc186ed768cbe395337403ae56c17a74c68ec"
 
 [[package]]
 name = "pdrive-core"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "dirs",
@@ -5092,7 +5101,7 @@ dependencies = [
 
 [[package]]
 name = "pdrive-daemon"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "dirs",
@@ -5110,7 +5119,7 @@ dependencies = [
 
 [[package]]
 name = "pdrive-gui"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "dirs",
@@ -7752,10 +7761,14 @@ version = "0.3.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
 dependencies = [
+ "matchers",
  "nu-ansi-term",
+ "once_cell",
+ "regex-automata",
  "sharded-slab",
  "smallvec",
  "thread_local",
+ "tracing",
  "tracing-core",
  "tracing-log",
 ]

@@ -318,13 +318,18 @@ impl DriveClient {
         }
 
         let (access_token, _) = self.session.token_credential.get_tokens().await?;
+        let session_id = self.session.session_id.raw().to_string();
         let resp = reqwest::Client::new()
             .get("https://drive-api.proton.me/core/v4/users")
             .bearer_auth(&access_token)
+            .header("x-pm-uid", &session_id)
             .header("x-pm-appversion", "web-drive@5.0.16")
             .send()
             .await?;
-        let body: UserResp = resp.json().await?;
+        let raw = resp.text().await?;
+        tracing::debug!("get_user_quota raw response: {}", &raw[..raw.len().min(500)]);
+        let body: UserResp = serde_json::from_str(&raw)
+            .map_err(|e| anyhow::anyhow!("get_user_quota deserialize: {}: body={}", e, &raw[..raw.len().min(400)]))?;
         Ok((body.user.used_space, body.user.max_space))
     }
 }

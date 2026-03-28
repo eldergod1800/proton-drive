@@ -6,6 +6,11 @@ export struct FileEntry {
     size: string,
 }
 
+export struct BreadcrumbSegment {
+    label: string,
+    path: string,
+}
+
 export struct SidebarEntry {
     label: string,
     path: string,
@@ -40,15 +45,16 @@ export component MainWindow inherits Window {
     background: c-bg;
 
     // ── Data ──────────────────────────────────────────────────────────
-    in-out property <string>         status-text: "Ready";
-    in-out property <string>         daemon-status: "connecting...";
-    in-out property <int>            active-sidebar: 0;
-    in-out property <[FileEntry]>    file-entries: [];
-    in-out property <string>         current-path: "/";
-    in-out property <float>          storage-ratio: 0.0;
-    in-out property <string>         storage-used: "";
-    in-out property <string>         storage-total: "";
-    in-out property <[SidebarEntry]> sidebar-entries: [
+    in-out property <string>               status-text: "Ready";
+    in-out property <string>               daemon-status: "connecting...";
+    in-out property <int>                  active-sidebar: 0;
+    in-out property <[FileEntry]>          file-entries: [];
+    in-out property <string>               current-path: "/";
+    in-out property <[BreadcrumbSegment]>  breadcrumb-segments: [];
+    in-out property <float>                storage-ratio: 0.0;
+    in-out property <string>               storage-used: "";
+    in-out property <string>               storage-total: "";
+    in-out property <[SidebarEntry]>       sidebar-entries: [
         { label: "My Files",     path: "/",         icon: "🗂" },
         { label: "Computers",    path: "/computers", icon: "🖥" },
     ];
@@ -212,38 +218,83 @@ export component MainWindow inherits Window {
                 background: root.c-bg;
 
                 HorizontalBox {
-                    padding-left: 16px;
+                    padding-left: 12px;
                     padding-right: 12px;
                     padding-top: 8px;
                     padding-bottom: 8px;
                     spacing: 6px;
                     alignment: stretch;
 
-                    // Back button
+                    // Back button — only shown when not at a root path
                     if root.current-path != "/" && root.current-path != "/computers": Rectangle {
-                        width: 32px;
+                        width: 72px;
                         height: 32px;
-                        border-radius: 6px;
-                        background: back-touch.has-hover ? root.c-hover : transparent;
+                        border-radius: 7px;
+                        background: back-touch.has-hover ? root.c-hover : root.c-active-bg;
+                        border-width: 1px;
+                        border-color: root.c-divider;
                         back-touch := TouchArea { clicked => { root.navigate-up(); } }
-                        Text {
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                            text: "←";
-                            font-size: 16px;
-                            color: root.c-text;
+                        HorizontalBox {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            spacing: 4px;
+                            alignment: center;
+                            Text {
+                                text: "←";
+                                font-size: 14px;
+                                color: root.c-active-text;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: "Back";
+                                font-size: 12px;
+                                font-weight: 600;
+                                color: root.c-active-text;
+                                vertical-alignment: center;
+                            }
                         }
                     }
 
-                    // Breadcrumb
-                    Text {
-                        text: root.current-path == "/" || root.current-path == "/computers"                            ? root.sidebar-entries[root.active-sidebar].label
-                            : root.sidebar-entries[root.active-sidebar].label + "  ›  " + root.current-path;
-                        font-size: 14px;
-                        font-weight: 600;
-                        color: root.c-text;
-                        vertical-alignment: center;
+                    // Clickable breadcrumb segments
+                    HorizontalBox {
+                        spacing: 0px;
+                        alignment: start;
                         horizontal-stretch: 1;
+                        padding: 0;
+                        for seg[i] in root.breadcrumb-segments: HorizontalBox {
+                            spacing: 0px;
+                            alignment: center;
+                            padding: 0;
+                            // Separator (not before first)
+                            if i > 0: Text {
+                                text: " › ";
+                                font-size: 13px;
+                                color: root.c-subtext;
+                                vertical-alignment: center;
+                            }
+                            // Segment — clickable if not the last one
+                            Rectangle {
+                                height: 28px;
+                                width: seg-lbl.preferred-width + 10px;
+                                border-radius: 5px;
+                                background: (seg-touch.has-hover && i < root.breadcrumb-segments.length - 1)
+                                    ? root.c-hover : transparent;
+                                seg-touch := TouchArea {
+                                    enabled: i < root.breadcrumb-segments.length - 1;
+                                    mouse-cursor: i < root.breadcrumb-segments.length - 1 ? pointer : default;
+                                    clicked => { root.browse-requested(seg.path); }
+                                }
+                                seg-lbl := Text {
+                                    x: 5px;
+                                    y: (parent.height - self.height) / 2;
+                                    text: seg.label;
+                                    font-size: 13px;
+                                    font-weight: i == root.breadcrumb-segments.length - 1 ? 700 : 400;
+                                    color: i == root.breadcrumb-segments.length - 1 ? root.c-text : root.c-subtext;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
                     }
 
                     // ── + New button ──────────────────────────────────

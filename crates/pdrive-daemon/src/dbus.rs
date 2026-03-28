@@ -72,6 +72,28 @@ impl PDriveInterface {
         if guard.is_some() { "running".to_string() } else { "no-session".to_string() }
     }
 
+    /// Reload the drive session from the keyring.  Called by the GUI after a
+    /// successful login so the daemon immediately picks up the new session
+    /// instead of continuing with a stale one from startup.
+    async fn reload_session(&self) -> String {
+        // Clear in-memory session so get_or_load_drive re-fetches from keyring
+        *self.drive.lock().await = None;
+        // Clear listing cache — it belongs to the old session / account
+        self.listing_cache.lock().await.clear();
+        self.path_cache.lock().await.clear();
+
+        match self.get_or_load_drive().await {
+            Some(_) => {
+                tracing::info!("reload_session: new session loaded successfully");
+                "ok".to_string()
+            }
+            None => {
+                tracing::warn!("reload_session: no session found in keyring");
+                "no-session".to_string()
+            }
+        }
+    }
+
     async fn get_storage(&self) -> String {
         let drive = match self.get_or_load_drive().await {
             Some(d) => d,

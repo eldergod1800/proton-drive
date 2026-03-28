@@ -2,3 +2,9 @@
 .worktrees
 *.age
 *.db
+# Arch package build artifacts
+*.pkg.tar.zst
+*.tar.gz
+/src/
+/pkg/
+Screenshot_*.png

@@ -1,15 +1,15 @@
-import { LineEdit, VerticalBox } from "std-widgets.slint";
+import { VerticalBox, HorizontalBox } from "std-widgets.slint";
 
 export component LoginDialog inherits Window {
     title: "Proton Drive";
     preferred-width: 400px;
-    preferred-height: 440px;
-    background: #ffffff;
+    preferred-height: 460px;
 
+    in-out property <bool>   dark-mode: false;
     in-out property <string> error-text: "";
     in-out property <bool>   busy: false;
     in-out property <bool>   show-verification: false;
-    in-out property <string> verification-label: "Human verification required. Open the page in your browser, complete the captcha, then click Sign In.";
+    in-out property <string> verification-label: "Human verification required. Complete the captcha in the window that opened.";
     in-out property <string> captcha-url: "";
     in-out property <bool>   show-2fa: false;
 
@@ -17,96 +17,195 @@ export component LoginDialog inherits Window {
     callback login-requested(string /* username */, string /* password */);
     callback totp-requested(string /* totp code */);
 
+    // ── Palette ───────────────────────────────────────────────────────────────
+    property <color> c-bg:           dark-mode ? #1e1e2e : #f2f2f7;
+    property <color> c-card:         dark-mode ? #24273a : #ffffff;
+    property <color> c-text:         dark-mode ? #cdd6f4 : #1a1a2e;
+    property <color> c-subtext:      dark-mode ? #a6adc8 : #666666;
+    property <color> c-label:        dark-mode ? #a6adc8 : #444444;
+    property <color> c-input-bg:     dark-mode ? #1e1e2e : #f8f8fc;
+    property <color> c-input-border: dark-mode ? #45475a : #d0d0d8;
+    property <color> c-input-focus:  dark-mode ? #cba6f7 : #6d4aff;
+    property <color> c-placeholder:  dark-mode ? #585b70 : #bbbbbb;
+    property <color> c-error-bg:     dark-mode ? #3d1f1f : #fff0f0;
+    property <color> c-error-text:   dark-mode ? #f38ba8 : #d32f2f;
+    property <color> c-info-bg:      dark-mode ? #1f2d3d : #eef3ff;
+    property <color> c-info-text:    dark-mode ? #89b4fa : #444488;
+    property <color> c-accent:       dark-mode ? #cba6f7 : #6d4aff;
+    property <color> c-accent-h:     dark-mode ? #b08fe8 : #5a38e8;
+    property <color> c-accent-dim:   dark-mode ? #7c6aad : #a08fff;
+
+    background: c-bg;
+
+    // ── Card ─────────────────────────────────────────────────────────────────
     Rectangle {
-        background: #ffffff;
+        background: root.c-card;
+        border-radius: 16px;
+        border-width: 1px;
+        border-color: dark-mode ? #313244 : #e0e0e8;
+        width: 340px;
+        height: root.height - 40px;
+        x: (root.width - self.width) / 2;
+        y: 20px;
 
         VerticalBox {
-            padding: 40px;
+            padding: 32px;
+            padding-top: 20px;
             spacing: 0;
 
-            // Logo area
-            Rectangle {
-                height: 80px;
-                VerticalBox {
-                    spacing: 4px;
-                    alignment: center;
-                    Text {
-                        text: "⬡";
-                        font-size: 36px;
-                        color: #6d4aff;
-                        horizontal-alignment: center;
+            // ── Header: dark mode toggle right, logo centered ─────────────────
+            HorizontalBox {
+                height: 30px;
+                spacing: 0;
+                padding: 0;
+                alignment: stretch;
+                // Spacer left (same width as toggle so logo centers)
+                Rectangle { width: 30px; }
+                // Logo hex — centered
+                Text {
+                    text: "⬡";
+                    font-size: 26px;
+                    color: root.c-accent;
+                    horizontal-alignment: center;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                }
+                // Dark mode toggle right
+                Rectangle {
+                    width: 30px;
+                    height: 30px;
+                    border-radius: 8px;
+                    background: dm-touch.has-hover ? root.c-input-border : transparent;
+                    dm-touch := TouchArea {
+                        clicked => { root.dark-mode = !root.dark-mode; }
                     }
                     Text {
-                        text: "Proton Drive";
-                        font-size: 22px;
-                        font-weight: 700;
-                        color: #1a1a2e;
-                        horizontal-alignment: center;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        text: root.dark-mode ? "☀" : "☾";
+                        font-size: 15px;
+                        color: root.dark-mode ? #f9e2af : #888888;
                     }
                 }
             }
 
-            Rectangle { height: 8px; }
+            Rectangle { height: 6px; }
 
             Text {
-                text: "Sign in to your account";
-                font-size: 13px;
-                color: #888888;
+                text: "Proton Drive";
+                font-size: 20px;
+                font-weight: 600;
+                color: root.c-text;
                 horizontal-alignment: center;
             }
 
-            Rectangle { height: 28px; }
+            Rectangle { height: 4px; }
 
-            // Username
+            Text {
+                text: "Sign in to your account";
+                font-size: 12px;
+                color: root.c-subtext;
+                horizontal-alignment: center;
+            }
+
+            Rectangle { height: 22px; }
+
+            // ── Username ──────────────────────────────────────────────────────
             Text {
                 text: "Email or username";
                 font-size: 12px;
                 font-weight: 600;
-                color: #444444;
+                color: root.c-label;
             }
             Rectangle { height: 6px; }
-            username-field := LineEdit {
-                placeholder-text: "you@proton.me";
-                enabled: !root.busy;
-                height: 40px;
+            Rectangle {
+                height: 42px;
+                border-radius: 8px;
+                border-width: 1.5px;
+                border-color: username-input.has-focus ? root.c-input-focus : root.c-input-border;
+                background: root.c-input-bg;
+
+                // Placeholder text (visible when empty)
+                if username-input.text == "": Text {
+                    x: 13px;
+                    y: (parent.height - self.height) / 2;
+                    text: "you@proton.me";
+                    color: root.c-placeholder;
+                    font-size: 13px;
+                }
+
+                username-input := TextInput {
+                    x: 13px;
+                    width: parent.width - 26px;
+                    height: 20px;
+                    y: (parent.height - self.height) / 2;
+                    enabled: !root.busy;
+                    color: root.c-text;
+                    font-size: 13px;
+                    accepted => { password-input.focus(); }
+                }
             }
 
-            Rectangle { height: 16px; }
+            Rectangle { height: 14px; }
 
-            // Password
+            // ── Password ──────────────────────────────────────────────────────
             Text {
                 text: "Password";
                 font-size: 12px;
                 font-weight: 600;
-                color: #444444;
+                color: root.c-label;
             }
             Rectangle { height: 6px; }
-            password-field := LineEdit {
-                placeholder-text: "Password";
-                input-type: password;
-                enabled: !root.busy;
-                height: 40px;
+            Rectangle {
+                height: 42px;
+                border-radius: 8px;
+                border-width: 1.5px;
+                border-color: password-input.has-focus ? root.c-input-focus : root.c-input-border;
+                background: root.c-input-bg;
+
+                if password-input.text == "": Text {
+                    x: 13px;
+                    y: (parent.height - self.height) / 2;
+                    text: "Password";
+                    color: root.c-placeholder;
+                    font-size: 13px;
+                }
+
+                password-input := TextInput {
+                    x: 13px;
+                    width: parent.width - 26px;
+                    height: 20px;
+                    y: (parent.height - self.height) / 2;
+                    enabled: !root.busy;
+                    input-type: InputType.password;
+                    color: root.c-text;
+                    font-size: 13px;
+                    accepted => {
+                        if !root.busy {
+                            root.login-requested(username-input.text, password-input.text);
+                        }
+                    }
+                }
             }
 
-            Rectangle { height: 8px; }
+            Rectangle { height: 10px; }
 
-            // Captcha verification section (shown only when show-verification is true)
+            // ── Captcha section ────────────────────────────────────────────
             if root.show-verification: VerticalBox {
                 spacing: 0;
                 padding: 0;
 
                 Rectangle {
-                    height: 52px;
+                    height: 48px;
                     border-radius: 6px;
-                    background: #f0f4ff;
-
+                    background: root.c-info-bg;
                     Text {
                         x: 10px;
                         width: parent.width - 20px;
                         y: (parent.height - self.height) / 2;
                         text: root.verification-label;
-                        color: #444488;
-                        font-size: 12px;
+                        color: root.c-info-text;
+                        font-size: 11px;
                         wrap: word-wrap;
                     }
                 }
@@ -116,15 +215,11 @@ export component LoginDialog inherits Window {
                 Rectangle {
                     height: 36px;
                     border-radius: 8px;
-                    background: root.busy ? #d0d0d0 : (captcha-touch.has-hover ? #5a38e8 : #6d4aff);
-
+                    background: root.busy ? root.c-accent-dim : (captcha-touch.has-hover ? root.c-accent-h : root.c-accent);
                     captcha-touch := TouchArea {
                         enabled: !root.busy;
-                        clicked => {
-                            root.open-captcha-page-requested();
-                        }
+                        clicked => { root.open-captcha-page-requested(); }
                     }
-
                     Text {
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
@@ -137,41 +232,48 @@ export component LoginDialog inherits Window {
 
                 Rectangle { height: 6px; }
 
-                // Copyable URL so user can paste into private/incognito window
                 Text {
-                    text: "Or copy URL to paste in a private browser window:";
-                    font-size: 11px;
-                    color: #888888;
+                    text: "Or copy URL to a private browser window:";
+                    font-size: 10px;
+                    color: root.c-subtext;
                     wrap: word-wrap;
                 }
                 Rectangle { height: 4px; }
-                url-field := LineEdit {
-                    text: root.captcha-url;
-                    enabled: true;
-                    height: 32px;
-                    font-size: 10px;
+                Rectangle {
+                    height: 30px;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: root.c-input-border;
+                    background: root.c-input-bg;
+                    TextInput {
+                        x: 8px;
+                        width: parent.width - 16px;
+                        y: (parent.height - self.height) / 2;
+                        text: root.captcha-url;
+                        color: root.c-subtext;
+                        font-size: 10px;
+                    }
                 }
-
                 Rectangle { height: 8px; }
             }
 
-            // Error text
+            // ── Error text ────────────────────────────────────────────────
             if root.error-text != "": Rectangle {
-                height: 36px;
+                height: 40px;
                 border-radius: 6px;
-                background: #fff0f0;
-
+                background: root.c-error-bg;
                 Text {
                     x: 10px;
+                    width: parent.width - 20px;
                     y: (parent.height - self.height) / 2;
                     text: root.error-text;
-                    color: #d32f2f;
+                    color: root.c-error-text;
                     font-size: 12px;
                     wrap: word-wrap;
                 }
             }
 
-            // 2FA section (shown only when show-2fa is true) — input + Verify button in one block
+            // ── 2FA section ────────────────────────────────────────────────
             if root.show-2fa: VerticalBox {
                 spacing: 0;
                 padding: 0;
@@ -180,33 +282,45 @@ export component LoginDialog inherits Window {
                     text: "Two-factor authentication";
                     font-size: 12px;
                     font-weight: 600;
-                    color: #444444;
+                    color: root.c-label;
                 }
                 Rectangle { height: 6px; }
-                totp-field := LineEdit {
-                    placeholder-text: "6-digit code";
-                    height: 40px;
+                Rectangle {
+                    height: 42px;
+                    border-radius: 8px;
+                    border-width: 1.5px;
+                    border-color: totp-input.has-focus ? root.c-input-focus : root.c-input-border;
+                    background: root.c-input-bg;
+
+                    if totp-input.text == "": Text {
+                        x: 13px;
+                        y: (parent.height - self.height) / 2;
+                        text: "6-digit code";
+                        color: root.c-placeholder;
+                        font-size: 13px;
+                    }
+
+                    totp-input := TextInput {
+                        x: 13px;
+                        width: parent.width - 26px;
+                        height: 20px;
+                        y: (parent.height - self.height) / 2;
+                        color: root.c-text;
+                        font-size: 13px;
+                    }
                 }
-                Rectangle { height: 8px; }
-
+                Rectangle { height: 10px; }
                 if root.error-text == "": Rectangle { height: 36px; }
-
                 Rectangle { height: 8px; }
 
                 Rectangle {
                     height: 44px;
                     border-radius: 10px;
-                    background: root.busy
-                        ? #a08fff
-                        : (totp-btn-touch.has-hover ? #5a38e8 : #6d4aff);
-
-                    totp-btn-touch := TouchArea {
+                    background: root.busy ? root.c-accent-dim : (totp-btn.has-hover ? root.c-accent-h : root.c-accent);
+                    totp-btn := TouchArea {
                         enabled: !root.busy;
-                        clicked => {
-                            root.totp-requested(totp-field.text);
-                        }
+                        clicked => { root.totp-requested(totp-input.text); }
                     }
-
                     Text {
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
@@ -219,27 +333,19 @@ export component LoginDialog inherits Window {
             }
 
             if root.error-text == "" && !root.show-2fa: Rectangle { height: 36px; }
-
             Rectangle { height: 8px; }
 
-            // Sign in button (hidden when 2FA is active)
+            // ── Sign in button ─────────────────────────────────────────────
             if !root.show-2fa: Rectangle {
                 height: 44px;
                 border-radius: 10px;
-                background: root.busy
-                    ? #a08fff
-                    : (btn-touch.has-hover ? #5a38e8 : #6d4aff);
-
+                background: root.busy ? root.c-accent-dim : (btn-touch.has-hover ? root.c-accent-h : root.c-accent);
                 btn-touch := TouchArea {
                     enabled: !root.busy;
                     clicked => {
-                        root.login-requested(
-                            username-field.text,
-                            password-field.text,
-                        );
+                        root.login-requested(username-input.text, password-input.text);
                     }
                 }
-
                 Text {
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;

@@ -13,6 +13,10 @@ trait PDrive {
     async fn browse_directory(&self, remote_path: &str) -> zbus::Result<String>;
     async fn download_file(&self, remote_path: &str) -> zbus::Result<String>;
     async fn get_storage(&self) -> zbus::Result<String>;
+    /// Tell the daemon to reload its session from the keyring.
+    /// Called by the GUI after a successful login so the daemon immediately
+    /// uses the freshly-saved session instead of a stale one from startup.
+    async fn reload_session(&self) -> zbus::Result<String>;
 }
 
 pub async fn connect() -> anyhow::Result<PDriveProxy<'static>> {
