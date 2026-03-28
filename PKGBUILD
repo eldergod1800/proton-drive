@@ -9,7 +9,7 @@ license=('GPL-3.0-or-later')
 depends=('dbus' 'python-gobject' 'webkit2gtk-4.1')
 makedepends=('rust' 'cargo' 'cmake' 'clang')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('d68a318cf3c74ebe5e5922c691115b536a90921be4febd69c4f2c000abbb504c')
+sha256sums=('5096c85704da6d7076556248f611881af0796672374f558425695c6628ab320c')
 
 prepare() {
     cd "$pkgname-$pkgver"
